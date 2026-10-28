@@ -1,0 +1,27 @@
+# Written by the forecast while it runs: kept on the server, not in git
+archive/
+cycles/
+forecasts_cache/
+replay/
+site/
+states/
+static/
+setup_check/
+status.json
+check_map.html
+.cycle.lock
+*.log
+rehearsal/imerg_2024/
+
+# Secrets: never commit them (see "Passwords" in README.md)
+credentials*.env
+*.env
+.env
+key.json
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+build/
+dist/

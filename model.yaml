@@ -1,0 +1,44 @@
+# Roshi Khola (Kavre, Nepal) to just above the Sunkoshi confluence, 90 m.
+# Runoff and routing as the Khokana 5-year runs (GA + impervious, implicit diffusive).
+# Rain comes from the forecast (forecast.yaml); OUTPUT_DIR is not used by it.
+DEM_PATH: ''
+DEM_BOUNDS_WGS84: [85.38, 27.36, 85.90, 27.70]
+DEM_SOURCE: fabdem            # bare earth
+DEM_SCALE_M: 90
+MODEL_AREA: watershed
+OUTPUT_POINT: [27.44238, 85.80873]   # on the Roshi, 1.5 km above the Sunkoshi (OSM)
+TARGET_CRS_EPSG: EPSG:32645
+DELINEATION_ENGINE: pyflwdir
+OUTPUT_DIR: static
+GEE_PROJECT: ee-074bce151saurav
+PRECIP_METHOD: idw
+RUNOFF_SOURCE: physical
+RUNOFF_MECHANISMS: [impervious, infiltration_excess]
+IMPERVIOUS_SOURCE: lcz
+GA_KSAT_SOURCE: gee           # HiHydroSoil v2.0
+GA_KSAT_DEPTH_CM: 60
+GA_SUCTION_SOURCE: texture
+GA_RECOVERY: true
+SOILGRIDS_DEPTH: b30
+VSA_SD_SOURCE: gee
+SERVES_SATELLITE: landsat
+SERVES_SEARCH_WINDOW: 30
+MANNINGS_N_SOURCE: lcz
+MANNINGS_N: 0.09
+MANNINGS_N_CHANNEL: 0.035
+CHANNEL_QBF_M3S: wecs_nepal
+CHANNEL_GEOMETRY: discharge
+CHANNEL_SUBGRID: true
+CHANNEL_MIN_AREA_KM2: 10.0
+ROUTING_SCHEME: diffusive_implicit
+ADAPTIVE_TIMESTEP: true
+IMPLICIT_CFL_TARGET: 2.0
+IMPLICIT_MAX_ITERS: 8
+IMPLICIT_TOL: 0.0001
+OUTPUT_INTERVAL_SECONDS: 600
+MASS_BALANCE_REPORT: true
+BACKEND: cpu
+
+# Added by 'MRRpy forecast setup': the date of the soil-moisture layer
+# every forecast cycle uses (the run times come from the forecast).
+EVENT_START_UTC: '2026-10-28 00:00'

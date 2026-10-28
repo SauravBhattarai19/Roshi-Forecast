@@ -1,0 +1,29 @@
+# Rehearsal of the 26–28 Sept 2024 storm: IMERG as the "stations", ECMWF runs as issued.
+name: Roshi Khola flood forecast — Sept 2024 rehearsal
+model: ../model.yaml
+folder: ..                      # shares ../static; replay works in ../replay/<start>/
+display_timezone: Asia/Kathmandu
+forecast_hours: 72
+look_back_hours: 12
+warm_up_days: 30
+station_silent_minutes: 120
+missing_rain: zero
+rain_stations:
+  - name: IMERG
+    source: gauge_files
+    gauges: imerg_2024/gauges.csv
+    timeseries: imerg_2024/timeseries.csv
+    start_utc: "2024-08-25 00:00"
+rain_forecasts:
+  - {name: ECMWF, source: open_meteo, model: ecmwf_ifs, api: single_run}   # the 2024 run archive is under ecmwf_ifs
+main_forecast: ECMWF
+no_rain_version: true
+hydrograph_points:
+  - {name: Panauti, lat: 27.58491, lon: 85.52141}
+  - {name: Khopasi, lat: 27.56193, lon: 85.53829}
+  - {name: Mangaltar (BP Highway), lat: 27.47640, lon: 85.74547}
+flood_areas:
+  - {name: Panauti town, box: [85.505, 27.574, 85.532, 27.592], method: 2d}
+  - {name: Mangaltar (BP Highway), box: [85.725, 27.465, 85.762, 27.487], method: 2d}
+website:
+  title: Roshi Khola — Sept 2024 rehearsal

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "roshi-forecast"
+version = "0.1.0"
+description = "Live flood forecast for the Roshi Khola (Nepal), built on the MRRpy model"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+# The hydrology and hydraulics are MRRpy's. The forecast needs an MRRpy with
+# restart files, Open-Meteo rain and 2-D flood maps: see "Install" in README.md.
+dependencies = ["MRRpy", "pyyaml", "pandas", "numpy"]
+
+[project.optional-dependencies]
+setup = ["MRRpy[gee]"]        # Earth Engine, for 'roshi-forecast setup' only
+test = ["pytest>=7"]
+
+[project.scripts]
+roshi-forecast = "roshi_forecast.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["roshi_forecast*"]
+
+[tool.setuptools.package-data]
+roshi_forecast = ["web/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

@@ -1,0 +1,38 @@
+# Live flood forecast for the Roshi Khola (Kavre). First places from the Sept 2024
+# flood reports, placed on OpenStreetMap: correct them after 'roshi-forecast check'.
+name: Roshi Khola flood forecast
+model: model.yaml
+display_timezone: Asia/Kathmandu
+every_minutes: 30
+forecast_hours: 72            # the Oct 30–31 storm is 2–3 days out
+look_back_hours: 12
+warm_up_days: 30
+missing_rain: forecast_model
+station_silent_minutes: 120   # AWS 496 uploads about once an hour
+threads_per_run: 8
+
+rain_stations:
+  - {name: AWS at Roshi, source: alertnepal, station: 496}   # Utrecht University & S4W
+
+rain_forecasts:
+  - {name: ECMWF, source: open_meteo, model: ecmwf_ifs025}
+  - {name: GFS,   source: open_meteo, model: gfs_seamless}
+  - {name: ICON,  source: open_meteo, model: icon_seamless}
+  - {name: alertnepal, source: alertnepal_forecast}
+main_forecast: ECMWF
+no_rain_version: true
+
+inflows: []                    # a headwater basin
+
+hydrograph_points:             # warning levels: set from the 2024 rehearsal
+  - {name: Panauti, lat: 27.58491, lon: 85.52141}               # below the Punyamati, near DHM 640
+  - {name: Khopasi, lat: 27.56193, lon: 85.53829}
+  - {name: Mangaltar (BP Highway), lat: 27.47640, lon: 85.74547}
+
+flood_areas:
+  - {name: Panauti town, box: [85.505, 27.574, 85.532, 27.592], method: 2d}
+  - {name: Mangaltar (BP Highway), box: [85.725, 27.465, 85.762, 27.487], method: 2d}
+
+website:
+  title: Roshi Khola flood forecast (experimental)
+  notice: Run as a research test of MRRpy.
