@@ -103,3 +103,16 @@ def test_cli_site_and_status_for_every_place(two_places, capsys, monkeypatch):
     main(["status"])
     out = capsys.readouterr().out
     assert "── roshi ──" in out and "── nakhu ──" in out
+
+
+def test_pages_only_publishing_keeps_states_off_git(two_places, monkeypatch):
+    from roshi_forecast import publish as pub
+    from roshi_forecast import places
+    pushed = []
+    monkeypatch.setattr(pub, "push_folder", lambda src, remote, branch, *a: pushed.append(branch))
+    (two_places / "places.yaml").write_text(yaml.safe_dump({"places": [
+        "places/roshi/forecast.yaml"], "publish": {"git": {"remote": "x", "state": False}}}))
+    portal = load_portal(str(two_places / "places.yaml"))
+    places.build(portal, log=lambda *a: None)
+    places.publish(portal, log=lambda *a: None)
+    assert pushed == ["gh-pages"]

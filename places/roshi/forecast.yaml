@@ -31,9 +31,9 @@ no_rain_version: true
 inflows: []                    # a headwater basin
 
 hydrograph_points:             # warning levels: set from the 2024 rehearsal
-  - {name: Panauti, lat: 27.58491, lon: 85.52141}               # below the Punyamati, near DHM 640
-  - {name: Khopasi, lat: 27.56193, lon: 85.53829}
-  - {name: Mangaltar (BP Highway), lat: 27.47640, lon: 85.74547}
+  - {name: Panauti, lat: 27.58491, lon: 85.52141, warning_m3s: 150, danger_m3s: 300}               # below the Punyamati, near DHM 640
+  - {name: Khopasi, lat: 27.56193, lon: 85.53829, warning_m3s: 200, danger_m3s: 400}
+  - {name: Mangaltar (BP Highway), lat: 27.47640, lon: 85.74547, warning_m3s: 600, danger_m3s: 1200}
 
 flood_areas:
   - {name: Panauti town, box: [85.505, 27.574, 85.532, 27.592], method: 2d}
@@ -41,4 +41,4 @@ flood_areas:
 
 website:
   title: Roshi Khola flood forecast (experimental)
-  notice: Run as a research test of MRRpy.
+  notice: Run as a research test of MRRpy. The warning and danger levels are placeholders for testing, not real levels.

@@ -9,7 +9,8 @@ and ``model.yaml``::
     places:
       - places/roshi/forecast.yaml
       - places/nakhu/forecast.yaml
-    publish: {git: {remote: https://github.com/USER/REPO.git}}   # optional
+    publish: {git: {remote: https://github.com/USER/REPO.git}}   # optional;
+                                                    # state: false → pages only
 
 ``build`` writes the site to ``public/`` (``output:``):
 
@@ -201,6 +202,9 @@ def publish(portal, log=print):
     work = os.path.join(portal.folder, ".publish")
     pub.push_folder(portal.out(), git["remote"], git.get("pages_branch", "gh-pages"),
                     os.path.join(work, "pages"), f"forecast {datetime.utcnow():%Y-%m-%d %H:%M} UTC")
+    if git.get("state") is False:
+        log(f"  Published to {git['remote']} (gh-pages; states kept on this computer).")
+        return
     bundle = os.path.join(work, "state_src")
     shutil.rmtree(bundle, ignore_errors=True)
     for place, site in sites(portal):

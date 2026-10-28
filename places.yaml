@@ -2,8 +2,10 @@
 # Add a place: make its folder with  roshi-forecast new places/<name>,
 # set it up, then list its forecast.yaml below.
 title: Flood forecasts (experimental)
-notice: Run as a research test of MRRpy.
+notice: Run as a research test of MRRpy. Warning levels are placeholders for testing, not real levels.
 every_minutes: 30
 places:
   - places/roshi/forecast.yaml
-# publish: {git: {remote: https://github.com/SauravBhattarai19/Roshi-Forecast.git}}
+# The web pages go to gh-pages.  state: false keeps the saved states and the
+# station archive (RTS data) off this public repository.
+publish: {git: {remote: https://github.com/SauravBhattarai19/Roshi-Forecast.git, state: false}}
