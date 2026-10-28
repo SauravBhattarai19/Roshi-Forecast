@@ -10,11 +10,15 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 # The hydrology and hydraulics are MRRpy's. The forecast needs an MRRpy with
-# restart files, Open-Meteo rain and 2-D flood maps: see "Install" in README.md.
-dependencies = ["MRRpy", "pyyaml", "pandas", "numpy"]
+# restart files, Open-Meteo rain and 2-D flood maps: the forecast-support branch
+# has all three (until they reach a release).
+dependencies = [
+    "MRRpy @ git+https://github.com/SauravBhattarai19/MRRpy.git@forecast-support",
+    "pyyaml", "pandas", "numpy",
+]
 
 [project.optional-dependencies]
-setup = ["MRRpy[gee]"]        # Earth Engine, for 'roshi-forecast setup' only
+setup = ["earthengine-api"]   # Earth Engine, for 'roshi-forecast setup' only
 test = ["pytest>=7"]
 
 [project.scripts]

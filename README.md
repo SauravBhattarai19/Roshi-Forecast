@@ -52,14 +52,15 @@ The forecast needs an MRRpy with three things:
 - **Open-Meteo rain**;
 - **2-D flood maps for several areas.**
 
-> [!NOTE]
-> No published MRRpy has all three yet. Until one does, install MRRpy from a
-> checkout that has them. `roshi-forecast` checks this and says what is missing.
+No MRRpy release has all three yet. MRRpy's
+[`forecast-support`](https://github.com/SauravBhattarai19/MRRpy/tree/forecast-support)
+branch does, and this repository installs MRRpy from it:
 
 ```bash
-pip install -e "/path/to/MRRpy[gee]"     # Earth Engine is used by 'setup' only
-pip install -e ".[test]"                 # this repository
+pip install -e ".[setup,test]"     # MRRpy from forecast-support; Earth Engine for 'setup'
 ```
+
+`roshi-forecast` checks the MRRpy it runs on and says what is missing.
 
 ## Running it
 
