@@ -9,6 +9,7 @@ import pytest
 import yaml
 from MRRpy import Config
 
+from roshi_forecast.places import parse_portal
 from roshi_forecast.sitefile import parse_site
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,7 +31,14 @@ def test_yaml_blocks_are_valid(tmp_path):
         data = yaml.safe_load(body)
         assert isinstance(data, dict), f"{page}: a YAML block is not a mapping"
         try:
-            if "model" in data:                                   # a forecast file
+            if "places" in data:                                  # a places file
+                (tmp_path / "places" / "x").mkdir(parents=True, exist_ok=True)
+                for i, _ in enumerate(data["places"]):
+                    (tmp_path / "places" / "x" / f"{i}.yaml").write_text("{}")
+                parse_portal(dict(data, places=[f"places/x/{i}.yaml"
+                                                for i in range(len(data["places"]))][:1]),
+                             str(tmp_path / "places.yaml"))
+            elif "model" in data:                                 # a forecast file
                 parse_site(dict(data, model="model.yaml"), str(tmp_path / "forecast.yaml"))
             else:                                                 # MRRpy settings
                 Config.from_dict(data)
@@ -41,7 +49,7 @@ def test_yaml_blocks_are_valid(tmp_path):
 
 
 def test_the_deployed_files_are_valid():
-    site = parse_site(yaml.safe_load(open(os.path.join(ROOT, "forecast.yaml"))),
-                      os.path.join(ROOT, "forecast.yaml"))
+    site = parse_site(yaml.safe_load(open(os.path.join(ROOT, "places", "roshi", "forecast.yaml"))),
+                      os.path.join(ROOT, "places", "roshi", "forecast.yaml"))
     assert site.main_forecast == "ECMWF"
-    Config.from_dict(yaml.safe_load(open(os.path.join(ROOT, "model.yaml"))))
+    Config.from_dict(yaml.safe_load(open(os.path.join(ROOT, "places", "roshi", "model.yaml"))))

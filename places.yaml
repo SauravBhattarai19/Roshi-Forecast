@@ -1,0 +1,9 @@
+# The places forecast here, and the one web site that shows them all.
+# Add a place: make its folder with  roshi-forecast new places/<name>,
+# set it up, then list its forecast.yaml below.
+title: Flood forecasts (experimental)
+notice: Run as a research test of MRRpy.
+every_minutes: 30
+places:
+  - places/roshi/forecast.yaml
+# publish: {git: {remote: https://github.com/SauravBhattarai19/Roshi-Forecast.git}}

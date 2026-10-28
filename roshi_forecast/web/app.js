@@ -374,6 +374,8 @@
       d.forecast_hours + " hours ahead.";
     summary(); drawMap(); points(); rain(); areas(); sources();
     getJSON("data/status.json").then(stale).catch(function () {});
+    getJSON("../places.json").then(function () { $("crumbs").hidden = false; })
+      .catch(function () {});                       // only inside a site of several places
   }).catch(function () {
     $("updated").textContent = "No forecast has been published here yet.";
   });

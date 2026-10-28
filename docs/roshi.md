@@ -95,10 +95,13 @@ gives the model's flows for that flood.
 ## Running it
 
 ```bash
-roshi-forecast check -f forecast.yaml
-roshi-forecast setup -f forecast.yaml
-roshi-forecast run -f forecast.yaml
+roshi-forecast check -f places/roshi/forecast.yaml
+roshi-forecast setup -f places/roshi/forecast.yaml
+roshi-forecast serve                  # every place in places.yaml, every 30 minutes
 ```
+
+The Roshi files are in `places/roshi/`. The site's front page lists Roshi with
+any other place added to `places.yaml`.
 
 Every update fetches ECMWF, GFS and ICON once an hour, at 10 km spacing. Each
 is a few dozen Open-Meteo calls, about 1,800 a day in all. That is well inside

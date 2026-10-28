@@ -10,6 +10,7 @@
     --link: #7cb7ff; --warn-bg: #4a3a0c; --warn-fg: #ffe6a3; --danger-bg: #561a17;
     --danger-fg: #ffd2cf; --ok-bg: #18361f; --ok-fg: #c8ecd0;
     --s1: #7cb7ff; --s2: #ff9b6b; --s3: #b9a5ef; --s4: #6fd3ad; --s5: #b0b0b0;
+    color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
@@ -17,11 +18,14 @@
   --link: #7cb7ff; --warn-bg: #4a3a0c; --warn-fg: #ffe6a3; --danger-bg: #561a17;
   --danger-fg: #ffd2cf; --ok-bg: #18361f; --ok-fg: #c8ecd0;
   --s1: #7cb7ff; --s2: #ff9b6b; --s3: #b9a5ef; --s4: #6fd3ad; --s5: #b0b0b0;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg);
   font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-header, main, footer { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+header, main, footer { max-width: 1100px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 header { padding-top: 16px; }
 h1 { font-size: 1.6rem; margin: 0 0 8px; }
 h2 { font-size: 1.25rem; margin: 28px 0 8px; border-bottom: 1px solid var(--line); }
@@ -68,4 +72,28 @@ summary { cursor: pointer; color: var(--link); }
 .card { background: var(--panel); border-radius: 8px; padding: 4px 12px 10px; margin: 12px 0; }
 footer { color: var(--muted); padding-bottom: 32px; margin-top: 32px;
   border-top: 1px solid var(--line); }
-@media (max-width: 600px) { #map { height: 340px; } h1 { font-size: 1.3rem; } }
+h1, h2, h3 { text-wrap: balance; }
+:focus-visible { outline: 3px solid var(--link); outline-offset: 2px; }
+caption { text-align: left; font-weight: 600; padding: 2px 0 4px; }
+
+/* Place pages inside a site of several places */
+#crumbs { margin: 0 0 6px; font-size: 0.95rem; }
+
+/* The front page (several places) */
+.portal-map { height: 380px; }
+.place-label { font-weight: 600; }
+.places { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: 16px; align-items: start; }
+.place { min-width: 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 4px 14px 8px; }
+.place h3 { font-size: 1.15rem; margin: 10px 0 4px; }
+.place p { margin: 6px 0; }
+.place .state { color: var(--muted); }
+.place .state.late { color: var(--danger-fg); background: var(--danger-bg); padding: 4px 8px;
+  border-radius: 4px; }
+.place table { width: 100%; }
+.level.none { color: var(--muted); border-color: var(--line); font-weight: 400; }
+td, th { font-variant-numeric: tabular-nums; }
+
+@media (max-width: 600px) { #map { height: 340px; } .portal-map { height: 300px; }
+  h1 { font-size: 1.3rem; } }

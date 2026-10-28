@@ -9,7 +9,7 @@ import os
 import shutil
 
 WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
-FILES = ("index.html", "app.js", "style.css")
+FILES = ("index.html", "app.js", "style.css", "leaflet.css")
 
 
 def write(site):

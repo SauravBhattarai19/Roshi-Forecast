@@ -12,6 +12,9 @@ publish.py — put the page online after a cycle.
   (:func:`restore_state`).
 * ``{command: "rsync -a {site}/ host:/var/www/flood/"}`` — any command;
   ``{site}`` is the page folder and ``{folder}`` the forecast folder.
+
+With several places (places.py) the whole site is published at once instead,
+and the ``state`` branch holds one folder per place.
 """
 
 import glob
@@ -32,7 +35,7 @@ def _git(args, cwd):
     return r.stdout
 
 
-def _push_folder(src, remote, branch, work, message):
+def push_folder(src, remote, branch, work, message):
     """Push the files of *src* as one orphan commit to *remote* *branch*."""
     shutil.rmtree(work, ignore_errors=True)
     shutil.copytree(src, work, symlinks=False)
@@ -44,7 +47,7 @@ def _push_folder(src, remote, branch, work, message):
     _git(["push", "-q", "--force", remote, f"{branch}:{branch}"], work)
 
 
-def _state_bundle(site, dst):
+def state_bundle(site, dst):
     shutil.rmtree(dst, ignore_errors=True)
     os.makedirs(os.path.join(dst, "states"))
     for t, p in _states.list_states(site)[-KEEP_STATES:]:
@@ -56,34 +59,39 @@ def _state_bundle(site, dst):
     return dst
 
 
+def run_command(command, site, folder):
+    """Run a publish command with {site} and {folder} filled in."""
+    cmd = command.format(site=shlex.quote(site), folder=shlex.quote(folder))
+    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(f"publish command failed: {(r.stderr or r.stdout).strip()}")
+
+
 def publish(site, log=print):
     pub = site.website.get("publish") or {}
     status = site.dir("status.json")
     message = "forecast " + (open(status).read(40) if os.path.isfile(status) else "")
     message = message.splitlines()[0][:72]
     if "command" in pub:
-        cmd = pub["command"].format(site=shlex.quote(site.dir("site")),
-                                    folder=shlex.quote(site.folder))
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        if r.returncode:
-            raise RuntimeError(f"publish command failed: {(r.stderr or r.stdout).strip()}")
+        run_command(pub["command"], site=site.dir("site"), folder=site.folder)
         log("  Published with the command.")
         return
     git = pub["git"]
     remote = git["remote"]
     work = site.dir(".publish")
-    _push_folder(site.dir("site"), remote, git.get("pages_branch", "gh-pages"),
+    push_folder(site.dir("site"), remote, git.get("pages_branch", "gh-pages"),
                  os.path.join(work, "pages"), message)
-    bundle = _state_bundle(site, os.path.join(work, "state_src"))
-    _push_folder(bundle, remote, git.get("state_branch", "state"),
+    bundle = state_bundle(site, os.path.join(work, "state_src"))
+    push_folder(bundle, remote, git.get("state_branch", "state"),
                  os.path.join(work, "state"), message)
     log(f"  Published to {remote} (gh-pages and state).")
 
 
-def restore_state(site, log=print):
+def restore_state(site, log=print, git=None, subdir=""):
     """Fetch the ``state`` branch and copy its states and archive into the folder
-    (for a backup runner that starts from an empty checkout)."""
-    git = (site.website.get("publish") or {}).get("git")
+    (for a backup runner that starts from an empty checkout).  With several
+    places, *git* is the places file's and each place is in its *subdir*."""
+    git = git or (site.website.get("publish") or {}).get("git")
     if not git:
         raise RuntimeError("restore needs website: publish: git: remote: in the forecast file")
     work = site.dir(".publish", "restore")
@@ -94,6 +102,7 @@ def restore_state(site, log=print):
     if r.returncode:
         log(f"  No state branch to restore from ({r.stderr.strip()}); starting fresh.")
         return 0
+    work = os.path.join(work, subdir) if subdir else work
     n = 0
     os.makedirs(site.dir("states"), exist_ok=True)
     for p in glob.glob(os.path.join(work, "states", "*.npz")):

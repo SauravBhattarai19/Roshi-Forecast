@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flood forecasts</title>
+<link rel="stylesheet" href="leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1 id="title">Flood forecasts</h1>
+  <p class="notice" id="notice"><strong>Experimental.</strong> These are computer models run
+    automatically, not official warnings. Follow the warnings of the national
+    authorities (in Nepal: the Department of Hydrology and Meteorology).</p>
+  <p id="updated" aria-live="polite">Loading the places…</p>
+</header>
+<main>
+  <section aria-labelledby="h-map">
+    <h2 id="h-map">Where</h2>
+    <p class="help">Each outline is the river basin of one forecast. Open a place from the
+      list below, or click its outline.</p>
+    <div id="map" class="portal-map" role="region" aria-label="Map of the forecast places"></div>
+  </section>
+  <section aria-labelledby="h-places">
+    <h2 id="h-places">Places</h2>
+    <div id="places" class="places"></div>
+  </section>
+</main>
+<footer>
+  <p id="credits">Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>
+    contributors. Model: <a href="https://pypi.org/project/MRRpy/">MRRpy</a>. Each place's
+    page names its rain stations and forecasts.</p>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="portal.js"></script>
+</body>
+</html>

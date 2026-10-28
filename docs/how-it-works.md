@@ -27,13 +27,38 @@ A place needs **two files**:
 ## Getting started
 
 ```bash
-roshi-forecast new roshi/            # writes roshi/forecast.yaml and roshi/model.yaml
-#   edit model.yaml (or: MRRpy wizard --edit roshi/model.yaml) and forecast.yaml
-roshi-forecast check -f roshi/forecast.yaml    # try every feed; where each point falls
-roshi-forecast setup -f roshi/forecast.yaml    # once: terrain, layers, warm-up, area DEMs
-roshi-forecast run   -f roshi/forecast.yaml    # one update
-roshi-forecast serve -f roshi/forecast.yaml    # an update every 30 minutes
+roshi-forecast new places/roshi/     # writes places/roshi/forecast.yaml and model.yaml
+#   edit model.yaml (or: MRRpy wizard --edit places/roshi/model.yaml) and forecast.yaml
+roshi-forecast check -f places/roshi/forecast.yaml    # try every feed; where each point falls
+roshi-forecast setup -f places/roshi/forecast.yaml    # once: terrain, layers, warm-up, area DEMs
+roshi-forecast run   -f places/roshi/forecast.yaml    # one update of this place alone
 ```
+
+## Several places, one site
+
+`places.yaml` lists the places. `run`, `serve`, `status` and `github-workflow`
+then work on all of them, and `public/` gets one site for them all:
+
+```yaml
+title: Flood forecasts (experimental)
+every_minutes: 30
+places:
+  - places/roshi/forecast.yaml
+  - places/nakhu/forecast.yaml
+publish: {git: {remote: https://github.com/USER/REPO.git}}   # optional
+```
+
+```bash
+roshi-forecast serve -p places.yaml   # each place in turn every 30 minutes, then the site
+roshi-forecast site  -p places.yaml   # only rebuild public/ (--publish to put it online)
+```
+
+The front page (`public/index.html`) shows each place's basin on a map and a
+card with its last update, the rain expected and the highest flow at each
+point, in words and a table. Each place's own page is at `public/<place>/`,
+the place being its folder's name, and links back to the front page. A place
+that fails one update keeps its last page, and the others still update. With
+several places the `state` branch keeps one folder per place.
 
 `check` prints each rain station's last report and each forecast's rain. For
 each hydrograph point it prints the river cell the model will use, with its
@@ -106,7 +131,7 @@ Any computer that stays on will do. One update of a basin of 75,000 cells
 takes a few minutes. Run it from cron, two minutes after each half hour:
 
 ```bash
-2,32 * * * *  cd /srv/roshi && roshi-forecast run -f forecast.yaml >> cycles.log 2>&1
+2,32 * * * *  cd /srv/roshi-forecast && roshi-forecast run -p places.yaml >> cycles.log 2>&1
 ```
 
 You can also run `roshi-forecast serve` in `tmux`, or as a systemd service. A
@@ -141,18 +166,18 @@ GitHub can also run the forecast, but only as a **backup**:
 To set up the backup:
 
 ```bash
-roshi-forecast github-workflow -f forecast.yaml
+roshi-forecast github-workflow -p places.yaml
 ```
 
 This writes `.github/workflows/forecast-backup.yml`. Commit it with
-`forecast.yaml`, `model.yaml` and `static/`. Every half hour it checks whether
+`places.yaml` and each place's `forecast.yaml`, `model.yaml` and `static/`. Every half hour it checks whether
 the server has updated in the last 45 minutes. If it has, it stops at once. If
 not, it fetches the `state` branch and runs the update itself.
 
 ## Rehearse a past flood
 
 ```bash
-roshi-forecast replay -f forecast.yaml --start "2024-09-26 00:00" --end "2024-09-28 12:00" --every 3
+roshi-forecast replay -f places/roshi/forecast.yaml --start "2024-09-26 00:00" --end "2024-09-28 12:00" --every 3
 ```
 
 This runs the updates one after another on a fake clock. Each update sees only

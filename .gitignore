@@ -11,7 +11,9 @@ status.json
 check_map.html
 .cycle.lock
 *.log
-rehearsal/imerg_2024/
+**/rehearsal/imerg_2024/
+public/
+.publish/
 
 # Secrets: never commit them (see "Passwords" in README.md)
 credentials*.env

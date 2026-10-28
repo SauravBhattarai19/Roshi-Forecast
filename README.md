@@ -64,24 +64,45 @@ pip install -e ".[setup,test]"     # MRRpy from forecast-support; Earth Engine f
 
 ## Running it
 
+Each place is a folder under `places/`, with its own `forecast.yaml` and
+`model.yaml`. `places.yaml` lists the places and makes one web site of them
+all: a front page with every place on a map and a card for each, and each
+place's own page under `public/<place>/`.
+
 ```bash
-roshi-forecast check  -f forecast.yaml    # try every feed; where each point falls (check_map.html)
-roshi-forecast setup  -f forecast.yaml    # once: terrain, soil layers, area DEMs, 30-day warm-up
-roshi-forecast run    -f forecast.yaml    # one update
-roshi-forecast serve  -f forecast.yaml    # an update every 30 minutes, until stopped
-roshi-forecast status -f forecast.yaml    # the last update and how fresh the station is
+roshi-forecast check  -f places/roshi/forecast.yaml   # try every feed; where each point falls
+roshi-forecast setup  -f places/roshi/forecast.yaml   # once per place: terrain, soil, area DEMs, warm-up
+roshi-forecast run                                    # update every place in places.yaml, then the site
+roshi-forecast serve                                  # the same every 30 minutes, until stopped
+roshi-forecast status                                 # each place's last update and its stations
+roshi-forecast site                                   # only rebuild the site (public/)
 ```
 
-Updates run without Earth Engine. Everything they need from it is saved by
-`setup` in `static/`.
+`-p places.yaml` is the default when that file is in the folder; `-f` runs one
+place on its own, with its own page in its `site/` folder. Updates run without
+Earth Engine: everything they need from it is saved by `setup` in `static/`.
+
+### Adding a place
+
+```bash
+roshi-forecast new places/nakhu          # writes forecast.yaml and model.yaml
+# set the basin in model.yaml and the stations, forecasts, points and areas in forecast.yaml
+roshi-forecast check -f places/nakhu/forecast.yaml
+roshi-forecast setup -f places/nakhu/forecast.yaml
+```
+
+Then add `places/nakhu/forecast.yaml` to `places.yaml`. The folder's name is
+the place's web address (`…/nakhu/`).
 
 | File or folder | What it is | In git? |
 |---|---|---|
-| `forecast.yaml` | the stations, forecasts, places and areas | yes |
-| `model.yaml` | the MRRpy settings | yes |
-| `rehearsal/` | the September 2024 rehearsal (`forecast.yaml`, `get_imerg.py`) | yes, not its data |
+| `places.yaml` | the places, the site's title, where it is published | yes |
+| `places/<place>/forecast.yaml` | the stations, forecasts, points and areas | yes |
+| `places/<place>/model.yaml` | the MRRpy settings | yes |
+| `places/roshi/rehearsal/` | the September 2024 rehearsal (`forecast.yaml`, `get_imerg.py`) | yes, not its data |
 | `docs/` | [how it works](docs/how-it-works.md), [the forecast file](docs/forecast-file.md), [the Roshi set-up](docs/roshi.md) | yes |
-| `static/`, `states/`, `archive/`, `cycles/`, `site/` | terrain, saved states, station archive, each update's runs, the web page | no: made on the server |
+| `places/<place>/static/`, `states/`, `archive/`, `cycles/`, `site/` | terrain, saved states, station archive, each update's runs, the place's page | no: made on the server |
+| `public/` | the whole web site | no: made on the server, published to `gh-pages` |
 
 ## Passwords
 

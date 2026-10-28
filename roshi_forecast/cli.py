@@ -34,13 +34,13 @@ jobs:
           git config --global user.name "roshi-forecast (backup)"
           git config --global user.email "forecast@localhost"
           git config --global url."https://x-access-token:${{{{ secrets.GITHUB_TOKEN }}}}@github.com/".insteadOf "git@github.com:"
-      - run: roshi-forecast run -f {forecast} --restore-state --only-if-stale {stale}
+      - run: roshi-forecast run {target} --restore-state --only-if-stale {stale}
 """
 
 
 def _site(args):
     from . import load_site
-    return load_site(args.forecast)
+    return load_site(args.forecast or "forecast.yaml")
 
 
 def _cmd_new(args):
@@ -89,37 +89,92 @@ def _cmd_setup(args):
     return 0
 
 
-def _run_once(site, args):
+def _targets(args):
+    """(places file or None, [(place id, site)]): -p, else -f, else places.yaml or
+    forecast.yaml in this folder."""
+    from . import load_site
+    from .places import load_portal, sites
+    places = getattr(args, "places", None)
+    if not places and not args.forecast and os.path.isfile("places.yaml"):
+        places = "places.yaml"
+    if places:
+        portal = load_portal(places)
+        return portal, [(p.id, site) for p, site in sites(portal)]
+    site = load_site(args.forecast or "forecast.yaml")
+    return None, [(None, site)]
+
+
+def _run_once(site, args, git=None, subdir="", publish=True):
     from .cycle import run_cycle
     if getattr(args, "restore_state", False):
         from .publish import restore_state
-        restore_state(site)
-    st = run_cycle(site, publish=not args.no_publish, parallel=not args.serial,
-                   only_if_stale=args.only_if_stale)
-    return 0 if st.get("ok") or st.get("skipped") else 1
+        restore_state(site, git=git, subdir=subdir)
+    return run_cycle(site, publish=publish and not args.no_publish, parallel=not args.serial,
+                     only_if_stale=args.only_if_stale)
+
+
+def _round(args, portal, items):
+    """One update of every place, then (several places) the site → exit code."""
+    if portal is None:
+        st = _run_once(items[0][1], args)
+        return 0 if st.get("ok") or st.get("skipped") else 1
+    from . import places
+    bad, ran = [], False
+    for pid, site in items:
+        print(f"── {pid} ──")
+        try:
+            st = _run_once(site, args, git=(portal.publish or {}).get("git"), subdir=pid,
+                           publish=False)
+            ran = ran or not st.get("skipped")
+            if not (st.get("ok") or st.get("skipped")):
+                bad.append(pid)
+        except Exception as exc:                          # noqa: BLE001 — the others go on
+            print(f"[ERROR] {pid}: {exc}", file=sys.stderr)
+            bad.append(pid)
+    if ran or not args.only_if_stale:
+        places.build(portal)
+        if not args.no_publish:
+            places.publish(portal)
+    if bad:
+        print(f"Updates failed for: {', '.join(bad)}", file=sys.stderr)
+    return 1 if bad else 0
 
 
 def _cmd_run(args):
     try:
-        return _run_once(_site(args), args)
+        return _round(args, *_targets(args))
     except RuntimeError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
 
 
 def _cmd_serve(args):
-    site = _site(args)
-    every = 60.0 * site.every_minutes
-    print(f"A cycle every {site.every_minutes} minutes; stop with Ctrl+C.")
+    portal, items = _targets(args)
+    minutes = portal.every_minutes if portal else items[0][1].every_minutes
+    every = 60.0 * minutes
+    what = (f"{len(items)} places" if len(items) > 1 else "the place") if portal else "a cycle"
+    print(f"Updating {what} every {minutes} minutes; stop with Ctrl+C.")
     while True:
         t0 = time.time()
         try:
-            _run_once(site, args)
+            _round(args, portal, items)
         except Exception as exc:                          # noqa: BLE001 — keep serving
             print(f"[ERROR] cycle failed: {exc}", file=sys.stderr)
         wait = every - ((time.time() - 120.0) % every)      # 2 min after each half hour
         print(f"Next cycle in {wait / 60:.0f} min (this one took {time.time() - t0:.0f} s).")
         time.sleep(wait)
+
+
+def _cmd_site(args):
+    from . import places
+    portal, _ = _targets(args)
+    if portal is None:
+        print("[ERROR] 'site' needs a places file (-p places.yaml)", file=sys.stderr)
+        return 1
+    places.build(portal)
+    if args.publish:
+        places.publish(portal)
+    return 0
 
 
 def _cmd_replay(args):
@@ -132,11 +187,10 @@ def _cmd_replay(args):
     return 0
 
 
-def _cmd_status(args):
+def _status_one(site, json_too):
     import json
     from . import archive
     from .cycle import last_status
-    site = _site(args)
     st = last_status(site)
     if not st:
         print("No cycle has run yet.")
@@ -150,23 +204,39 @@ def _cmd_status(args):
     for key, (meta, table) in archive.stations(site).items():
         print(f"  station {meta['name']}: last report {meta.get('last_report_utc')} UTC, "
               f"{meta.get('rows')} rows kept")
-    if args.json:
+    if json_too:
         print(json.dumps(st, indent=1))
     return 0 if st.get("ok") else 1
 
 
+def _cmd_status(args):
+    portal, items = _targets(args)
+    code = 0
+    for pid, site in items:
+        if portal:
+            print(f"── {pid} ──")
+        code = max(code, _status_one(site, args.json))
+    return code
+
+
 def _cmd_workflow(args):
-    site = _site(args)
-    out = args.output or os.path.join(site.folder, ".github", "workflows", "forecast-backup.yml")
+    portal, items = _targets(args)
+    if portal:
+        folder, minutes = portal.folder, portal.every_minutes
+        target = "-p " + os.path.relpath(portal.path, folder)
+    else:
+        site = items[0][1]
+        folder, minutes = site.folder, site.every_minutes
+        target = "-f " + os.path.relpath(site.path, folder)
+    out = args.output or os.path.join(folder, ".github", "workflows", "forecast-backup.yml")
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    minute = (site.every_minutes // 4) or 7
-    cron = f"{minute},{minute + 30} * * * *" if site.every_minutes == 30 else f"{minute} * * * *"
+    minute = (minutes // 4) or 7
+    cron = f"{minute},{minute + 30} * * * *" if minutes == 30 else f"{minute} * * * *"
     with open(out, "w") as f:
-        f.write(WORKFLOW.format(cron=cron, stale=args.stale,
-                                forecast=os.path.relpath(site.path, site.folder)))
+        f.write(WORKFLOW.format(cron=cron, stale=args.stale, target=target))
     print(f"Written: {out}")
-    print("Commit the forecast folder (forecast.yaml, model.yaml, static/) to the repository "
-          "named in website: publish: git: remote:, with this file.")
+    print("Commit it, with each place's forecast.yaml, model.yaml and static/, to the "
+          "repository named in publish: git: remote:.")
     return 0
 
 
@@ -180,10 +250,14 @@ def build_parser():
                    version=f"roshi-forecast {__version__} (MRRpy {mrrpy_version})")
     fs = p.add_subparsers(dest="command", required=True)
 
-    def with_file(name, help, func):
+    def with_file(name, help, func, places=False):
         q = fs.add_parser(name, help=help)
-        q.add_argument("-f", "--forecast", default="forecast.yaml",
-                       help="the forecast file (default: forecast.yaml)")
+        q.add_argument("-f", "--forecast", default=None,
+                       help="one place's forecast file (default: forecast.yaml)")
+        if places:
+            q.add_argument("-p", "--places", default=None,
+                           help="a places file: every place in it, and the site of them all "
+                                "(default: places.yaml when there is one here)")
         q.set_defaults(func=func)
         return q
 
@@ -198,10 +272,10 @@ def build_parser():
     q.add_argument("--terrain", action="store_true", help="prepare the terrain again")
     q.add_argument("--no-warm-up", action="store_true", help="skip the warm-up run")
     q.add_argument("--serial", action="store_true", help="run models in this process")
-    for name, help, func in (("run", "run one forecast cycle now", _cmd_run),
-                             ("serve", "run a cycle every every_minutes, until stopped",
+    for name, help, func in (("run", "update the forecast now (one place, or every place)", _cmd_run),
+                             ("serve", "update every every_minutes, until stopped",
                               _cmd_serve)):
-        q = with_file(name, help, func)
+        q = with_file(name, help, func, places=True)
         q.add_argument("--no-publish", action="store_true", help="do not publish the page")
         q.add_argument("--serial", action="store_true", help="run the versions one by one "
                                                              "in this process")
@@ -216,12 +290,18 @@ def build_parser():
     q.add_argument("--warm-up-days", type=float, default=None,
                    help="days of rain before the first cycle (default: warm_up_days)")
     q.add_argument("--serial", action="store_true", help="run models in this process")
-    q = with_file("status", "the last cycle and how fresh each station is", _cmd_status)
+    q = with_file("status", "the last cycle and how fresh each station is", _cmd_status,
+                  places=True)
     q.add_argument("--json", action="store_true", help="also print status.json")
-    q = with_file("github-workflow", "write the GitHub Actions backup workflow", _cmd_workflow)
+    q = with_file("github-workflow", "write the GitHub Actions backup workflow", _cmd_workflow,
+                  places=True)
     q.add_argument("-o", "--output", default=None, help="where to write it")
     q.add_argument("--stale", type=float, default=45.0,
                    help="minutes without a cycle before the backup runs (default 45)")
+    q = with_file("site", "write the web site of every place (front page + each place's page)",
+                  _cmd_site, places=True)
+    q.add_argument("--publish", action="store_true", help="also publish it (publish: in "
+                                                          "the places file)")
     return p
 
 
