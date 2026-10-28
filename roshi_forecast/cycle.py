@@ -193,6 +193,32 @@ def read_inflows(site, ctx, status, log):
     return out
 
 
+def read_levels(site, ctx, status, log):
+    """{gauge name: Series of m} — the river gauges' water level, fetched and merged
+    into archive/levels/.  Shown on the page only; the model never uses it."""
+    regs = all_sources()["level"]
+    out = {}
+    for g in site.river_gauges:
+        old = archive.read_level(site, g.name)
+        ctx.archived = {g.name: old.index.max().to_pydatetime()} if len(old) else {}
+        st = status.data.setdefault("gauges", {})
+        try:
+            got = regs[g.source].func(g.spec(), ctx)
+            both = archive.save_level(site, g.name, got.level)
+            st[g.name] = {"ok": True, "lat": got.lat, "lon": got.lon, **got.info}
+        except Exception as exc:                              # noqa: BLE001
+            both = old
+            st[g.name] = {"ok": False, "error": str(exc)}
+            log(f"  River gauge {g.name}: FAILED ({exc}) — using the archive")
+        both = both[both.index <= ctx.now]
+        st[g.name]["last_report_utc"] = (both.index.max().strftime("%Y-%m-%d %H:%M")
+                                         if len(both) else None)
+        if st[g.name]["ok"]:
+            log(f"  River gauge {g.name}: last reading {st[g.name]['last_report_utc']} UTC")
+        out[g.name] = both
+    return out
+
+
 def inflow_file(inf, flow, run_start, run_end, path):
     """A ROUTING_INFLOW_BC CSV for one run: readings, then held or receding."""
     t = pd.date_range(run_start, run_end, freq="10min")
@@ -373,6 +399,7 @@ def _cycle(site, now, log, publish, parallel):
                 f"last report {t_obs:%Y-%m-%d %H:%M} UTC" if active else
                 "no station reported in time: past rain estimated")
     inflows = read_inflows(site, ctx, status, log)
+    levels = read_levels(site, ctx, status, log)
 
     run_start, restart, catch_up = plan_runs(site, now, t_obs)
     if restart is None:
@@ -450,7 +477,8 @@ def _cycle(site, now, log, publish, parallel):
     ok_versions = {v: rain_info[v] for v, r in results.items() if r["ok"]}
     if main_ok:
         try:
-            products.build(site, status.data, ok_versions, main, run_start, t_obs, now)
+            products.build(site, status.data, ok_versions, main, run_start, t_obs, now,
+                           levels=levels)
             status.step("products", True)
         except Exception as exc:                              # noqa: BLE001
             status.step("products", False, str(exc))

@@ -1,0 +1,52 @@
+# Model settings of Roshi Khola at Panauti (MRRpy), written by 'roshi-forecast new'.
+# The same physics as the Roshi Khola forecast. Rain comes from forecast.yaml.
+# Explain any setting with:  MRRpy explain NAME
+
+# ── Where ─────────────────────────────────────────────────────────────────
+OUTPUT_POINT: [27.5675, 85.53852]   # the outlet: lat, lon on the river
+# A box around the basin (west, south, east, north). 'roshi-forecast setup'
+# widens it by itself until the whole basin above the outlet fits.
+DEM_BOUNDS_WGS84: [85.3885, 27.4175, 85.6885, 27.7175]
+DEM_PATH: ''                  # '' = download the DEM below with Earth Engine
+DEM_SOURCE: fabdem            # bare earth (buildings and trees taken off)
+DEM_SCALE_M: 90
+TARGET_CRS_EPSG: EPSG:32645     # the UTM zone of the outlet
+MODEL_AREA: watershed
+DELINEATION_ENGINE: pyflwdir
+OUTPUT_DIR: static
+GEE_PROJECT: ee-074bce151saurav
+
+# ── Runoff: impervious ground + Green-Ampt infiltration with recovery ───────
+PRECIP_METHOD: idw
+RUNOFF_SOURCE: physical
+RUNOFF_MECHANISMS: [impervious, infiltration_excess]
+IMPERVIOUS_SOURCE: lcz
+GA_KSAT_SOURCE: gee           # HiHydroSoil v2.0
+GA_KSAT_DEPTH_CM: 60
+GA_SUCTION_SOURCE: texture
+GA_RECOVERY: true
+SOILGRIDS_DEPTH: b30
+VSA_SD_SOURCE: gee
+SERVES_SATELLITE: landsat
+SERVES_SEARCH_WINDOW: 30
+
+# ── Rivers ────────────────────────────────────────────────────────────────
+MANNINGS_N_SOURCE: lcz
+MANNINGS_N: 0.09
+MANNINGS_N_CHANNEL: 0.035
+CHANNEL_QBF_M3S: wecs_nepal   # Nepal's regional 2-year flood formula
+CHANNEL_GEOMETRY: discharge
+CHANNEL_SUBGRID: true
+CHANNEL_MIN_AREA_KM2: 10.0
+ROUTING_SCHEME: diffusive_implicit
+ADAPTIVE_TIMESTEP: true
+IMPLICIT_CFL_TARGET: 2.0
+IMPLICIT_MAX_ITERS: 8
+IMPLICIT_TOL: 0.0001
+OUTPUT_INTERVAL_SECONDS: 600
+MASS_BALANCE_REPORT: true
+BACKEND: cpu
+
+# Added by 'roshi-forecast setup': the date of the soil-moisture layer
+# every forecast cycle uses (the run times come from the forecast).
+EVENT_START_UTC: '2026-10-28 00:00'

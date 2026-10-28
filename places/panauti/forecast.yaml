@@ -1,0 +1,50 @@
+# Forecast file of the Roshi Khola at Panauti: the 158 km² above the river gauge
+# Roshi Khola at Panauti (RTS 471). All three rain stations of the Roshi are in this
+# part of the basin, so here the past rain is measured; the whole Roshi Khola
+# (places/roshi) runs on the forecast models' own rain instead.
+# Check it with:  roshi-forecast check -f places/panauti/forecast.yaml
+# Times are UTC unless a setting says otherwise.
+
+name: Roshi Khola at Panauti flood forecast
+model: model.yaml
+folder: .
+display_timezone: Asia/Kathmandu
+every_minutes: 30
+forecast_hours: 72
+look_back_hours: 24           # a whole day of measured level next to the model on the chart
+warm_up_days: 30
+missing_rain: forecast_model  # no station reported: use the main forecast model's rain
+station_silent_minutes: 60    # RTS has each 10-minute reading within about 10 minutes
+threads_per_run: 8
+
+rain_stations:                # RTS, with the alertnepal team's permission (sign-in: scripts/save-credentials.sh)
+  - {name: AWS at Roshi, source: rts, station: 468}   # Utrecht University & S4W; = alertnepal AWS 496
+  - {name: AWS at Nala, source: rts, station: 469}
+  # AWS at Parkhalchour (rts 470) is left out: its rain gauge reads 0 since about 13 Sept 2026,
+  # while the other two had 50–75 mm a day on 24–25 Sept.
+
+rain_forecasts:               # each one is a version of the forecast
+  - {name: ECMWF, source: open_meteo, model: ecmwf_ifs025}
+  - {name: GFS,   source: open_meteo, model: gfs_seamless}
+  - {name: ICON,  source: open_meteo, model: icon_seamless}
+  - {name: alertnepal, source: alertnepal_forecast}
+main_forecast: ECMWF          # this one draws the flood maps
+no_rain_version: true         # also: what if no more rain falls?
+
+inflows: []                   # a headwater basin
+
+hydrograph_points:            # warning levels: placeholders, as on the whole Roshi
+  - {name: Panauti gauge (RTS 471), lat: 27.56998, lon: 85.53894, snap_radius_cells: 3}   # the outlet; the gauge is 3 cells north of the river line
+  - {name: Panauti, lat: 27.58491, lon: 85.52141, warning_m3s: 150, danger_m3s: 300}    # below the Punyamati, near DHM 640
+
+river_gauges:                 # measured water level, drawn under the point's hydrograph
+  - {name: Roshi Khola at Panauti, source: rts, station: 471, point: Panauti gauge (RTS 471)}
+
+flood_areas:
+  - {name: Panauti town, box: [85.505, 27.574, 85.532, 27.592], method: 2d}
+
+basin_map: {method: 2d, boxes: auto}   # a flood map of every river above the gauge
+
+website:
+  title: Roshi Khola at Panauti flood forecast (experimental)
+  notice: Run as a research test of MRRpy. The warning and danger levels are placeholders for testing, not real levels.

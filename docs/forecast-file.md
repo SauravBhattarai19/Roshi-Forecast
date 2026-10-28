@@ -49,6 +49,13 @@ website:
 
 Each entry has a `name`, a `source` and that source's keys.
 
+Stations stand for the whole basin: the rain at each model cell is spread from
+them by distance. List them only where they are spread well enough for that.
+With `rain_stations: []`, the rain before now is the main forecast model's own
+(`missing_rain`), and the page says so. The Roshi Khola does this: its three
+stations all lie in the quarter of the basin above the Panauti gauge, which
+runs on them as its own place (`places/panauti`).
+
 | Source | Keys | Reads |
 |---|---|---|
 | `alertnepal` | `station` (number), `parameter` (`PCPN_10M`) | an automatic weather station of the [alertnepal](https://alertnepal.online) dashboard (Nepal). These are the dashboard's own interfaces, not a published API: ask the alertnepal team before you run a forecast on them |
@@ -86,7 +93,32 @@ These are rivers that enter the model at its edge, each an
 | `name`, `lat`, `lon` | the point; it moves to the river cell of largest drainage within `snap_radius_cells` (2). A larger radius slides a point down its river, so put the point on the river and keep the radius small |
 | `warning_m3s`, `danger_m3s` | optional levels. The page says "above warning level" or "above danger level" in words |
 
-The outlet always gets a hydrograph too.
+The outlet gets a hydrograph too, unless a point is already within 500 m of it.
+
+## River gauges: `river_gauges`
+
+A river gauge's measured water level, drawn in its own panel under a point's
+hydrograph, with its own scale, so the forecast can be checked against the river.
+The model never uses it. Each entry has a `name`, a `source`, that source's keys
+and `point`: the name of the hydrograph point it is drawn under (put that point
+at the gauge). The readings are kept in `archive/levels/`.
+
+| Source | Keys | Reads |
+|---|---|---|
+| `rts` | `station` (number), `parameter` (`WTR_LVL`), `backfill_days` (35), `sign_in` (`RTS`) | a river gauge of the RTS system (471 is the Roshi Khola at Panauti) |
+| `csv` | `path` (file or web address); `time_column` (`time_utc`), `value_column` (`level_m`), `timezone` | the water level at each time |
+
+The page shows the gauge's own reading, in metres. It is not the depth: the
+RTS gauge at Panauti reads about 1342.7 m at low flow. It also says how far the
+level is above its lowest reading of the last 30 days, and how it changed in
+the last hour.
+
+```text
+hydrograph_points:
+  - {name: Panauti gauge (RTS 471), lat: 27.56998, lon: 85.53894, snap_radius_cells: 3}
+river_gauges:
+  - {name: Roshi Khola at Panauti, source: rts, station: 471, point: Panauti gauge (RTS 471)}
+```
 
 ## Flood areas: `flood_areas`
 

@@ -48,6 +48,12 @@ class FakeRts:
                         {"parameter_id": 528, "parameter_code": "SM_10_10M"}]}]}
         if path == "api/station/468/data-series":
             return [{"id": 7238, "parameter_id": 453}, {"id": 7204, "parameter_id": 528}]
+        if path == "api/station/471":
+            return {"id": 471, "name": "Roshi Khola at Panauti", "latitude": 27.5700,
+                    "longitude": 85.5389, "data_source": [{"parameters": [
+                        {"parameter_id": 600, "parameter_code": "WTR_LVL"}]}]}
+        if path == "api/station/471/data-series":
+            return [{"id": 7300, "parameter_id": 600}]
         if path == "api/observation/index":
             q = urllib.parse.parse_qs(query)
             a = datetime.fromisoformat(q["date_from"][0].rstrip("Z"))
@@ -55,7 +61,7 @@ class FakeRts:
             t = a.replace(minute=a.minute - a.minute % 10, second=0) + timedelta(minutes=10)
             out = []
             while t <= b:
-                value = "0.2" if q["series_id"][0] == "7238" else "0.31"
+                value = {"7238": "0.2", "7300": "1342.8"}.get(q["series_id"][0], "0.31")
                 flag = 1 if t == datetime(2026, 10, 28, 12, 0) else 0      # one flagged reading
                 out.append({"time": t.strftime("%Y-%m-%dT%H:%M:00.000Z"), "value": value,
                             "qc_flag": flag, "series_id": q["series_id"][0]})
@@ -105,6 +111,20 @@ def test_reads_go_back_from_the_archive_s_newest_reading(signed_in, tmp_path):
     _read(tmp_path, fake, now=later, backfill_days=2)                        # (e.g. 'check'):
     asked = [urllib.parse.parse_qs(c[1].split("?", 1)[1]) for c in fake.calls if "observation" in c[1]]
     assert asked[0]["date_from"] == ["2026-10-26T14:34:00Z"]                 # the whole back-fill
+
+
+def test_reads_a_river_gauge_s_water_level(signed_in, tmp_path):
+    fake = FakeRts()
+    ctx = Context(now=NOW, cache_dir=str(tmp_path))
+    got = rts.read_level({"name": "Panauti gauge", "station": 471, "backfill_days": 1}, ctx,
+                         client=rts.Rts(session=fake))
+    assert got.level.eq(1342.8).all() and got.level.index.max() == datetime(2026, 10, 28, 14, 0)
+    assert got.info == {"gauge": "Roshi Khola at Panauti", "station": 471} and got.lat == 27.57
+    regs = all_sources()                                                     # the readers
+    assert regs["level"]["rts"].func is rts.read_level                       # the forecast
+    assert regs["station"]["rts"].func is rts.read_station                   # file reaches
+    with pytest.raises(FeedError, match="no WTR_LVL series"):                # a rain station
+        rts.read_level({"name": "x", "station": 468}, ctx, client=rts.Rts(session=fake))
 
 
 def test_one_sign_in_and_again_when_it_expires(signed_in, tmp_path):

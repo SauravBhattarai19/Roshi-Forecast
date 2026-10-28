@@ -9,6 +9,7 @@ Readers for plain files or web addresses (CSV).
   satellite rain prepared for a rehearsal of a past flood.
 * ``csv`` forecast — rain forecast at one point, same columns as the station.
 * ``csv`` inflow — river discharge: columns ``time_utc`` and ``Q_m3s``.
+* ``csv`` river gauge — water level: columns ``time_utc`` and ``level_m``.
 """
 
 import io
@@ -18,8 +19,8 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
-from . import (FlowSeries, ForecastRain, StationRain, forecast_source, inflow_source,
-               station_source)
+from . import (FlowSeries, ForecastRain, LevelSeries, StationRain, forecast_source,
+               inflow_source, level_source, station_source)
 from ._http import FeedError, Session
 
 
@@ -123,3 +124,14 @@ def read_csv_inflow(spec, ctx):
     s = pd.Series(_values(df, spec, "Q_m3s"), index=_times(df, spec)).dropna()
     s = s[~s.index.duplicated(keep="last")].sort_index()
     return FlowSeries(flow=s[(s.index <= ctx.now) & (s >= 0)])
+
+
+@level_source("csv", required=("path",),
+              optional=("time_column", "value_column", "timezone"),
+              help="a river gauge's water level in a CSV file or at a web address "
+                   "(time_utc, level_m)")
+def read_csv_level(spec, ctx):
+    df = read_table(spec["path"])
+    s = pd.Series(_values(df, spec, "level_m"), index=_times(df, spec)).dropna()
+    s = s[~s.index.duplicated(keep="last")].sort_index()
+    return LevelSeries(level=s[s.index <= ctx.now])

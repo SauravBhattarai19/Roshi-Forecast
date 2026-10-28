@@ -45,6 +45,20 @@ and `forecast.yaml`.
 
 ## Install
 
+On the computer that will run it (Linux or macOS):
+
+```bash
+git clone https://github.com/SauravBhattarai19/Roshi-Forecast.git
+cd Roshi-Forecast
+scripts/install.sh                          # .venv with this package and its MRRpy
+.venv/bin/roshi-forecast service install    # runs by itself from now on
+.venv/bin/roshi-forecast doctor             # what is ready, what to fix
+```
+
+**Handing it over? Read the [operator guide](docs/operator-guide.md).** It
+covers the sign-ins, what to edit for each change, and what to do when
+something is wrong.
+
 The forecast needs an MRRpy with three things:
 
 - **restart files**, so each update carries on from the last one instead of
@@ -52,47 +66,60 @@ The forecast needs an MRRpy with three things:
 - **Open-Meteo rain**;
 - **2-D flood maps for several areas.**
 
-No MRRpy release has all three yet. MRRpy's
+MRRpy's
 [`forecast-support`](https://github.com/SauravBhattarai19/MRRpy/tree/forecast-support)
-branch does, and this repository installs MRRpy from it:
-
-```bash
-pip install -e ".[setup,test]"     # MRRpy from forecast-support; Earth Engine for 'setup'
-```
-
-`roshi-forecast` checks the MRRpy it runs on and says what is missing.
+branch has all three. The install takes MRRpy from it (developers:
+`pip install -e ".[setup,test]"`). `roshi-forecast` checks the MRRpy it runs on
+and says what is missing.
 
 ## Running it
 
 Each place is a folder under `places/`, with its own `forecast.yaml` and
 `model.yaml`. `places.yaml` lists the places and makes one web site of them
-all: a front page with every place on a map and a card for each, and each
-place's own page under `public/<place>/`.
+all. The front page has every place on a map, a card for each and their
+warnings. Each place has its own page under `public/<place>/`, with these
+parts:
+
+- a map of every river, coloured by flow; click any river for its forecast;
+- 2-D flood maps;
+- the hydrographs of each forecast;
+- day-by-day tiles;
+- the rain stations.
 
 ```bash
-roshi-forecast check  -f places/roshi/forecast.yaml   # try every feed; where each point falls
-roshi-forecast setup  -f places/roshi/forecast.yaml   # once per place: terrain, soil, area DEMs, warm-up
-roshi-forecast run                                    # update every place in places.yaml, then the site
-roshi-forecast serve                                  # the same every 30 minutes, until stopped
-roshi-forecast status                                 # each place's last update and its stations
-roshi-forecast site                                   # only rebuild the site (public/)
+roshi-forecast serve      # keeps going: every 30 min each place is updated and the site published
+roshi-forecast doctor     # is everything ready and running? what to fix, in words
+roshi-forecast status     # each place's last update and its stations
+roshi-forecast run        # one update of every place now
+roshi-forecast site       # only rebuild the site (public/)
+roshi-forecast check -f places/roshi/forecast.yaml   # try every feed; where each point falls
 ```
 
-`-p places.yaml` is the default when that file is in the folder; `-f` runs one
-place on its own, with its own page in its `site/` folder. Updates run without
-Earth Engine: everything they need from it is saved by `setup` in `static/`.
+`serve` reads the settings again every round. Edit a file, and the next round
+uses it:
+
+- a new place in `places.yaml` is set up by itself;
+- a place whose `model.yaml` changed is set up again;
+- a new flood area gets its DEM.
+
+A file with a mistake keeps its last good version, and `doctor` reports it.
+`roshi-forecast service install` keeps `serve` running. It uses a systemd user
+service, or cron where there is no systemd. Updates run without Earth Engine:
+everything they need from it is saved by setup in `static/`.
 
 ### Adding a place
 
 ```bash
-roshi-forecast new places/nakhu          # writes forecast.yaml and model.yaml
-# set the basin in model.yaml and the stations, forecasts, points and areas in forecast.yaml
-roshi-forecast check -f places/nakhu/forecast.yaml
-roshi-forecast setup -f places/nakhu/forecast.yaml
+roshi-forecast new places/nakhu --name "Nakhu Khola" --outlet 27.62,85.29
 ```
 
-Then add `places/nakhu/forecast.yaml` to `places.yaml`. The folder's name is
-the place's web address (`…/nakhu/`).
+This writes `places/nakhu/model.yaml` (the Roshi physics, the UTM zone of the
+outlet) and `forecast.yaml` (ECMWF, GFS and ICON; the outlet as a point; a 2-D
+map of the whole basin). It also adds the place to `places.yaml`. Then put the
+towns and bridges to watch under `hydrograph_points`. `serve` sets the place up
+by itself: setup widens the DEM box until the basin fits. Or run the setup now:
+`roshi-forecast setup -f places/nakhu/forecast.yaml`. The folder's name is the
+place's web address (`…/nakhu/`).
 
 | File or folder | What it is | In git? |
 |---|---|---|
@@ -100,7 +127,7 @@ the place's web address (`…/nakhu/`).
 | `places/<place>/forecast.yaml` | the stations, forecasts, points and areas | yes |
 | `places/<place>/model.yaml` | the MRRpy settings | yes |
 | `places/roshi/rehearsal/` | the September 2024 rehearsal (`forecast.yaml`, `get_imerg.py`) | yes, not its data |
-| `docs/` | [how it works](docs/how-it-works.md), [the forecast file](docs/forecast-file.md), [the Roshi set-up](docs/roshi.md) | yes |
+| `docs/` | [operator guide](docs/operator-guide.md), [how it works](docs/how-it-works.md), [the forecast file](docs/forecast-file.md), [the Roshi set-up](docs/roshi.md) | yes |
 | `places/<place>/static/`, `states/`, `archive/`, `cycles/`, `site/` | terrain, saved states, station archive, each update's runs, the place's page | no: made on the server |
 | `public/` | the whole web site | no: made on the server, published to `gh-pages` |
 

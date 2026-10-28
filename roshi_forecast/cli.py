@@ -47,11 +47,13 @@ def _cmd_new(args):
     from . import template
     from MRRpy.interactive.render import save_yaml
     from MRRpy.config import Config
-    os.makedirs(args.folder, exist_ok=True)
     fc = os.path.join(args.folder, "forecast.yaml")
     if os.path.exists(fc) and not args.force:
         print(f"[ERROR] {fc} already exists (use --force to replace it)", file=sys.stderr)
         return 1
+    if args.outlet:
+        return _new_from_outlet(args, fc)
+    os.makedirs(args.folder, exist_ok=True)
     with open(fc, "w") as f:
         f.write(template())
     model = os.path.join(args.folder, "model.yaml")
@@ -68,6 +70,29 @@ def _cmd_new(args):
     return 0
 
 
+def _new_from_outlet(args, fc):
+    from .newplace import add_to_places, known_project, parse_outlet, write_place
+    places = args.places or ("places.yaml" if os.path.isfile("places.yaml") else None)
+    name = args.name or os.path.basename(os.path.normpath(args.folder)).replace("_", " ").title()
+    project = args.gee_project or known_project(places)
+    model, fc = write_place(args.folder, name, parse_outlet(args.outlet), args.timezone, project)
+    print(f"Written: {model}\n         {fc}")
+    added = places and add_to_places(places, fc)
+    if added:
+        print(f"Added to {places}.")
+    print("Next:")
+    print(f"  1. Put the towns, bridges or gauges to watch under hydrograph_points in {fc}")
+    if not project:
+        print(f"  -  Put your Earth Engine project in {model} (GEE_PROJECT)")
+    if places:
+        print("  2. Nothing else: a running 'roshi-forecast serve' (the service) sets it up "
+              "and publishes it by itself. Follow it with: roshi-forecast doctor")
+        print(f"     (or set it up now: roshi-forecast setup -f {fc})")
+    else:
+        print(f"  2. roshi-forecast setup -f {fc}   then   roshi-forecast run -f {fc}")
+    return 0
+
+
 def _cmd_check(args):
     from .check import check_site
     out = check_site(_site(args))
@@ -79,17 +104,23 @@ def _cmd_check(args):
 
 
 def _cmd_setup(args):
+    from .autopilot import record_manual
     from .prepare import SetupError, latest_flood_run, map_dems, setup_site
+    site = _site(args)
     try:
         if args.maps_only:
-            site = _site(args)
             map_dems(site, latest_flood_run(site))
-            return 0
-        setup_site(_site(args), force_terrain=args.terrain, warm=not args.no_warm_up,
-                   parallel=not args.serial)
-    except SetupError as exc:
+        else:
+            setup_site(site, force_terrain=args.terrain, warm=not args.no_warm_up,
+                       parallel=not args.serial)
+    except Exception as exc:                              # noqa: BLE001 — recorded, then shown
+        record_manual(site, False, exc, maps_only=args.maps_only)
+        if not isinstance(exc, SetupError):
+            raise
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
+    if args.maps_only or not args.no_warm_up:
+        record_manual(site, True, maps_only=args.maps_only)
     return 0
 
 
@@ -117,8 +148,14 @@ def _run_once(site, args, git=None, subdir="", publish=True):
                      only_if_stale=args.only_if_stale)
 
 
-def _round(args, portal, items):
-    """One update of every place, then (several places) the site → exit code."""
+def _pairs(portal, items):
+    by_id = {p.id: p for p in portal.places}
+    return [(by_id[pid], site) for pid, site in items if pid in by_id]
+
+
+def _round(args, portal, items, everyone=None):
+    """One update of every place in *items*, then (several places) the site of
+    *everyone* (default: every place's file read again) → exit code."""
     if portal is None:
         st = _run_once(items[0][1], args)
         return 0 if st.get("ok") or st.get("skipped") else 1
@@ -136,9 +173,10 @@ def _round(args, portal, items):
             print(f"[ERROR] {pid}: {exc}", file=sys.stderr)
             bad.append(pid)
     if ran or not args.only_if_stale:
-        places.build(portal)
+        pairs = None if everyone is None else _pairs(portal, everyone)
+        places.build(portal, items=pairs)
         if not args.no_publish:
-            places.publish(portal)
+            places.publish(portal, items=pairs)
     if bad:
         print(f"Updates failed for: {', '.join(bad)}", file=sys.stderr)
     return 1 if bad else 0
@@ -152,21 +190,118 @@ def _cmd_run(args):
         return 1
 
 
+def _serve_lock(folder):
+    """Hold a lock while serving, so a second serve here stops (→ the open file)."""
+    try:
+        import fcntl
+    except ImportError:                                   # Windows: no lock
+        return None
+    f = open(os.path.join(folder, ".serve.lock"), "a+")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.seek(0)
+        pid = f.read().strip()
+        f.close()
+        raise RuntimeError("'roshi-forecast serve' is already running here"
+                           + (f" (process {pid})" if pid else "")
+                           + "; see: roshi-forecast service status")
+    f.seek(0)
+    f.truncate()
+    f.write(str(os.getpid()))
+    f.flush()
+    return f
+
+
+def tend(args, portal, items, log=print):
+    """One round of serve: update the places that are ready, then set up new or
+    changed places and flood maps (autopilot.py) → exit code."""
+    from .autopilot import place_state, prepare
+    ready, todo = [], []
+    for pid, site in items:
+        st = place_state(site)
+        if st.can_run:
+            ready.append((pid, site))
+        if st.need in ("setup", "maps"):
+            todo.append((pid, site, st))
+        elif st.need == "wait":
+            log(f"  {pid or site.name}: waiting — {st.note}")
+    code = _round(args, portal, ready, items) if ready else 0
+    for pid, site, st in todo:
+        log(f"── {pid or site.name}: " + ("setting up" if st.need == "setup" else
+                                        "preparing the flood maps' DEMs") + f" ({st.note}) ──")
+        if not prepare(site, st.need, log=log, parallel=not args.serial):
+            code = 1
+        elif st.need == "setup":                           # its first forecast now
+            code = max(code, _round(args, portal, [(pid, site)], items))
+    return code
+
+
 def _cmd_serve(args):
-    portal, items = _targets(args)
-    minutes = portal.every_minutes if portal else items[0][1].every_minutes
-    every = 60.0 * minutes
-    what = (f"{len(items)} places" if len(items) > 1 else "the place") if portal else "a cycle"
-    print(f"Updating {what} every {minutes} minutes; stop with Ctrl+C.")
+    from .autopilot import Settings
+    for stream in (sys.stdout, sys.stderr):              # logs to a file or tee: line by line
+        try:
+            stream.reconfigure(line_buffering=True)
+        except AttributeError:
+            pass
+    places = args.places or (None if args.forecast else
+                             "places.yaml" if os.path.isfile("places.yaml") else None)
+    settings = Settings(places, args.forecast)
+    try:
+        portal, items = settings.read()
+        lock = _serve_lock(portal.folder if portal else items[0][1].folder)  # noqa: F841
+    except RuntimeError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 1
+    print("Serving: every round reads the settings again, updates each place, and sets "
+          "up new or changed places by itself. Stop with Ctrl+C.")
     while True:
         t0 = time.time()
         try:
-            _round(args, portal, items)
+            portal, items = settings.read()
+            for problem in settings.problems:
+                print(f"[ERROR] {problem}", file=sys.stderr)
+            tend(args, portal, items)
         except Exception as exc:                          # noqa: BLE001 — keep serving
-            print(f"[ERROR] cycle failed: {exc}", file=sys.stderr)
+            print(f"[ERROR] round failed: {exc}", file=sys.stderr)
+        minutes = portal.every_minutes if portal else items[0][1].every_minutes
+        every = 60.0 * minutes
         wait = every - ((time.time() - 120.0) % every)      # 2 min after each half hour
-        print(f"Next cycle in {wait / 60:.0f} min (this one took {time.time() - t0:.0f} s).")
+        print(f"Next round in {wait / 60:.0f} min (this one took {time.time() - t0:.0f} s).",
+              flush=True)
         time.sleep(wait)
+
+
+def _cmd_doctor(args):
+    from .doctor import report
+    places = args.places or (None if args.forecast else
+                             "places.yaml" if os.path.isfile("places.yaml") else None)
+    return report(places, args.forecast, feeds=args.feeds)
+
+
+def _cmd_service(args):
+    from . import service
+    if args.action == "install":
+        if args.places or (not args.forecast and os.path.isfile("places.yaml")):
+            path = os.path.abspath(args.places or "places.yaml")
+            target = ["-p", path]
+        else:
+            path = os.path.abspath(args.forecast or "forecast.yaml")
+            target = ["-f", path]
+        if not os.path.isfile(path):
+            print(f"[ERROR] {path} not found", file=sys.stderr)
+            return 1
+        if args.no_publish:
+            target.append("--no-publish")
+        return service.install(os.path.dirname(path), target, name=args.name,
+                               dry_run=args.dry_run)
+    if args.action == "status":
+        return service.status(args.name)
+    if args.action == "logs":
+        return service.logs(os.getcwd(), lines=args.lines, name=args.name)
+    if args.action == "restart":
+        return service.restart(os.getcwd(), name=args.name)
+    return service.uninstall(args.name)
 
 
 def _cmd_site(args):
@@ -265,8 +400,18 @@ def build_parser():
         q.set_defaults(func=func)
         return q
 
-    q = fs.add_parser("new", help="write a forecast file and a model file to start from")
-    q.add_argument("folder", help="folder for the new forecast")
+    q = fs.add_parser("new", help="a new place: its forecast file and model file "
+                                  "(with --outlet, ready to run)")
+    q.add_argument("folder", help="folder for the new place, e.g. places/nakhu")
+    q.add_argument("--outlet", metavar="LAT,LON",
+                   help="the river point the basin drains to, e.g. 27.44,85.81: writes a "
+                        "ready model (setup finds the basin around it)")
+    q.add_argument("--name", help="the place's name, e.g. 'Nakhu Khola' (default: the folder)")
+    q.add_argument("--timezone", help="times on its page, e.g. Asia/Kathmandu "
+                                      "(default: Nepal's in Nepal, else UTC)")
+    q.add_argument("--gee-project", help="Earth Engine project (default: another place's)")
+    q.add_argument("-p", "--places", default=None,
+                   help="also add it to this places file (default: places.yaml here)")
     q.add_argument("--force", action="store_true", help="replace an existing forecast.yaml")
     q.set_defaults(func=_cmd_new)
     with_file("check", "try every feed and show where each point falls on the rivers",
@@ -280,7 +425,7 @@ def build_parser():
                         "basin_map), from the newest run")
     q.add_argument("--serial", action="store_true", help="run models in this process")
     for name, help, func in (("run", "update the forecast now (one place, or every place)", _cmd_run),
-                             ("serve", "update every every_minutes, until stopped",
+                             ("serve", "keep going: update every every_minutes, set up new places by itself",
                               _cmd_serve)):
         q = with_file(name, help, func, places=True)
         q.add_argument("--no-publish", action="store_true", help="do not publish the page")
@@ -305,6 +450,21 @@ def build_parser():
     q.add_argument("-o", "--output", default=None, help="where to write it")
     q.add_argument("--stale", type=float, default=45.0,
                    help="minutes without a cycle before the backup runs (default 45)")
+    q = with_file("doctor", "is this computer ready, and is the forecast running? "
+                            "(what to fix, in words)", _cmd_doctor, places=True)
+    q.add_argument("--feeds", action="store_true", help="also try every station and forecast")
+    q = fs.add_parser("service", help="keep 'serve' running on this computer: install, "
+                                      "status, logs, restart, uninstall")
+    q.add_argument("action", choices=("install", "status", "logs", "restart", "uninstall"))
+    q.add_argument("-f", "--forecast", default=None, help="one place's forecast file")
+    q.add_argument("-p", "--places", default=None,
+                   help="the places file (default: places.yaml here)")
+    q.add_argument("--no-publish", action="store_true",
+                   help="install: only write the pages, never publish them")
+    q.add_argument("--dry-run", action="store_true", help="install: only show what it would do")
+    q.add_argument("--lines", type=int, default=60, help="logs: how many lines (default 60)")
+    q.add_argument("--name", default="roshi-forecast", help=argparse.SUPPRESS)
+    q.set_defaults(func=_cmd_service)
     q = with_file("site", "write the web site of every place (front page + each place's page)",
                   _cmd_site, places=True)
     q.add_argument("--publish", action="store_true", help="also publish it (publish: in "
@@ -314,7 +474,7 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    if args.command != "new":
+    if args.command not in ("new", "service", "doctor"):
         from . import missing_mrrpy_features
         missing = missing_mrrpy_features()
         if missing:

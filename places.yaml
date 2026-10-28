@@ -6,6 +6,7 @@ notice: Run as a research test of MRRpy. Warning levels are placeholders for tes
 every_minutes: 30
 places:
   - places/roshi/forecast.yaml
+  - places/panauti/forecast.yaml
 # The web pages go to gh-pages.  state: false keeps the saved states and the
 # station archive (RTS data) off this public repository.
 publish: {git: {remote: https://github.com/SauravBhattarai19/Roshi-Forecast.git, state: false}}

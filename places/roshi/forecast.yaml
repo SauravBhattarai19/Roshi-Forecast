@@ -11,14 +11,11 @@ missing_rain: forecast_model
 station_silent_minutes: 60    # RTS has each 10-minute reading within about 10 minutes
 threads_per_run: 8
 
-rain_stations:                 # RTS, with the alertnepal team's permission (sign-in: scripts/save-credentials.sh)
-  - {name: AWS at Roshi, source: rts, station: 468}   # Utrecht University & S4W; = alertnepal AWS 496
-  - {name: AWS at Nala, source: rts, station: 469}
-  # AWS at Parkhalchour (rts 470) is left out: its rain gauge reads 0 since about 13 Sept 2026,
-  # while the other two had 50–75 mm a day on 24–25 Sept.
-  # Without the RTS sign-in, the same AWS 496 through alertnepal (hourly uploads; set
-  # station_silent_minutes: 120):
-  # - {name: AWS at Roshi, source: alertnepal, station: 496}
+# No rain stations here: the three AWS (Roshi 468, Nala 469, Parkhalchour 470) all sit in
+# the 158 km² above the Panauti gauge, a quarter of this 563 km² basin, so they cannot
+# stand for all of it. The rain before now is the main forecast model's own (ECMWF).
+# The part above the gauge runs on the stations as its own place: places/panauti.
+rain_stations: []
 
 rain_forecasts:
   - {name: ECMWF, source: open_meteo, model: ecmwf_ifs025}
@@ -32,8 +29,12 @@ inflows: []                    # a headwater basin
 
 hydrograph_points:             # warning levels: set from the 2024 rehearsal
   - {name: Panauti, lat: 27.58491, lon: 85.52141, warning_m3s: 150, danger_m3s: 300}               # below the Punyamati, near DHM 640
+  - {name: Panauti gauge (RTS 471), lat: 27.56998, lon: 85.53894, snap_radius_cells: 3}            # 2.3 km below Panauti; 3 cells north of the river line
   - {name: Khopasi, lat: 27.56193, lon: 85.53829, warning_m3s: 200, danger_m3s: 400}
   - {name: Mangaltar (BP Highway), lat: 27.47640, lon: 85.74547, warning_m3s: 600, danger_m3s: 1200}
+
+river_gauges:                  # measured water level, drawn under the point's hydrograph
+  - {name: Roshi Khola at Panauti, source: rts, station: 471, point: Panauti gauge (RTS 471)}
 
 flood_areas:
   - {name: Panauti town, box: [85.505, 27.574, 85.532, 27.592], method: 2d}

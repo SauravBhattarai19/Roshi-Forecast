@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Where live data comes from: rain stations, rain forecasts and river inflows.
+Where live data comes from: rain stations, rain forecasts, river inflows and
+river gauges (measured water level, shown next to the forecast).
 
 Each kind has a registry, so a new feed is one small module::
 
@@ -19,6 +20,8 @@ Each kind has a registry, so a new feed is one small module::
   (lat/lon) and a table of mm per interval at each point, indexed the same way.
 * An **inflow source** returns a :class:`FlowSeries`: discharge [m³/s] at times
   (UTC, naive) up to ``ctx.now``.
+* A **level source** returns a :class:`LevelSeries`: a river gauge's water level
+  [m] at times (UTC, naive) up to ``ctx.now``.  It is only shown, never run.
 
 ``spec`` is the entry from the forecast file (a dict with ``name``, ``source``
 and the source's own keys); ``ctx`` is a :class:`Context` with the clock, the
@@ -35,6 +38,7 @@ import pandas as pd
 STATION_SOURCES = {}
 FORECAST_SOURCES = {}
 INFLOW_SOURCES = {}
+LEVEL_SOURCES = {}
 
 
 @dataclass
@@ -68,6 +72,11 @@ def forecast_source(name, required=(), optional=(), help=""):
 def inflow_source(name, required=(), optional=(), help=""):
     """Register a river-inflow reader (see the module docstring)."""
     return _register(INFLOW_SOURCES, name, required, optional, help)
+
+
+def level_source(name, required=(), optional=(), help=""):
+    """Register a river-gauge (water level) reader (see the module docstring)."""
+    return _register(LEVEL_SOURCES, name, required, optional, help)
 
 
 @dataclass
@@ -108,6 +117,14 @@ class FlowSeries:
     info: dict = field(default_factory=dict)
 
 
+@dataclass
+class LevelSeries:
+    level: pd.Series                    # m, index = time (UTC)
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    info: dict = field(default_factory=dict)   # e.g. the gauge's own name
+
+
 def basin_centre(cfg):
     """(lat, lon) of the middle of the modelled basin (watershed.geojson)."""
     import geopandas as gpd
@@ -121,7 +138,7 @@ def all_sources():
     """Load the built-in readers (importing registers them)."""
     from . import alertnepal, files, open_meteo, rts  # noqa: F401
     return {"station": STATION_SOURCES, "forecast": FORECAST_SOURCES,
-            "inflow": INFLOW_SOURCES}
+            "inflow": INFLOW_SOURCES, "level": LEVEL_SOURCES}
 
 
 def replace(obj, **kw):

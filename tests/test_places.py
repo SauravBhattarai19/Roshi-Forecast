@@ -67,8 +67,17 @@ def test_the_site_has_a_front_page_and_each_place(two_places):
     pt = roshi["points"][0]
     assert (pt["main_q"], pt["level"], pt["low_q"], pt["high_q"], pt["has_levels"]) == \
         (120.5, "warning", 30.0, 120.5, True)                          # 'no more rain' left out
-    assert nakhu == {"id": "nakhu", "name": "Nakhu Khola", "timezone": "Asia/Kathmandu",
-                     "has_forecast": False}
+    assert nakhu == {"id": "nakhu", "name": "Nakhu Khola", "short": "Nakhu Khola",
+                     "timezone": "Asia/Kathmandu", "has_forecast": False}
+    assert (pt["worst"], pt["n_above_warning"], pt["n_forecasts"]) == ("warning", 1, 2)
+    assert roshi["worst"] == "warning"
+
+
+def test_short_place_names():
+    from roshi_forecast.places import short_name
+    assert short_name("Roshi Khola flood forecast (experimental)") == "Roshi Khola"
+    assert short_name("Nakhu Khola") == "Nakhu Khola"
+    assert short_name("Flood forecast") == "Flood forecast"
 
 
 def test_a_late_place_and_a_place_taken_off_the_list(two_places):

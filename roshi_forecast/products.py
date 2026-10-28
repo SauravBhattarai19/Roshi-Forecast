@@ -5,7 +5,8 @@ products.py — what the web page shows, as plain files under ``site/data`` and
 
     data/latest.json            the cycle: times, versions, stations, points with
                                 their highest expected flow and level, areas
-    data/points/<point>.json    flow at the point for every version (UTC times)
+    data/points/<point>.json    flow at the point for every version (UTC times),
+                                and the measured water level if a river gauge is there
     data/points/<point>.csv     the same as a table, for download
     data/rain.json, rain.csv    basin-average rain per hour for every version
     data/basin.geojson          the modelled basin outline
@@ -70,19 +71,63 @@ def _flows(vdir, run_start, gauge):
     return pd.Series(q.to_numpy(float), index=t)
 
 
-def _point_list(site):
+def _km(lat1, lon1, lat2, lon2):
+    """Distance on the ground, km (short distances)."""
+    dy = (lat2 - lat1) * 111.2
+    dx = (lon2 - lon1) * 111.2 * np.cos(np.radians((lat1 + lat2) / 2))
+    return float(np.hypot(dx, dy))
+
+
+def _point_list(site, outlet_km=0.5):
+    """The hydrograph points, plus the model's outlet unless a point is already
+    within *outlet_km* of it (e.g. a gauge at the outlet)."""
     from .sitefile import Point
     pts = [(slug(p.name), p, slug(p.name)) for p in site.hydrograph_points]
-    if "outlet" not in [k for k, _, _ in pts]:
-        pts.append(("outlet", Point("Outlet (end of the model)", 0.0, 0.0), None))
+    if "outlet" in [k for k, _, _ in pts]:
+        return pts
+    try:
+        from MRRpy.config import Config
+        lat, lon = Config.from_file(site.model).OUTPUT_POINT[:2]
+        if any(_km(p.lat, p.lon, float(lat), float(lon)) < outlet_km
+               for p in site.hydrograph_points):
+            return pts
+    except Exception:                                  # noqa: BLE001 — then show it
+        pass
+    pts.append(("outlet", Point("Outlet (end of the model)", 0.0, 0.0), None))
     return pts
 
 
-def build(site, status, versions, main, run_start, t_obs, now):
-    """Write the data files of a finished cycle (see the module docstring)."""
+def gauge_summary(level, now):
+    """The newest reading of a water level, its change over the last hour and its
+    height above the lowest reading of the 30 days before → dict (m)."""
+    level = level[level.index <= now].dropna()
+    if not len(level):
+        return {"now_m": None}
+    t, v = level.index[-1], float(level.iloc[-1])
+    before = level[level.index <= t - timedelta(minutes=55)]
+    month = level[level.index > t - timedelta(days=30)]
+    return {"now_m": round(v, 3), "utc": _iso(t),
+            "change_1h_m": (round(v - float(before.iloc[-1]), 3)
+                            if len(before) and t - before.index[-1] <= timedelta(hours=2)
+                            else None),
+            "above_low_m": round(v - float(month.min()), 3),
+            "low_since_utc": _iso(month.index[0])}
+
+
+def past_rain(site):
+    """Where the rain before now comes from: 'stations', or (no stations listed)
+    the site's missing_rain: 'forecast_model' or 'zero'."""
+    return "stations" if site.rain_stations else site.missing_rain
+
+
+def build(site, status, versions, main, run_start, t_obs, now, levels=None):
+    """Write the data files of a finished cycle (see the module docstring).
+    *levels*: {river gauge name: Series of m}, shown under their points."""
     data_dir = site.dir("site", "data")
     os.makedirs(os.path.join(data_dir, "points"), exist_ok=True)
     tz = site.display_timezone
+    levels = levels or {}
+    by_stations = past_rain(site) == "stations"
     points_out = []
     for pid, point, gauge in _point_list(site):
         series = {}
@@ -108,13 +153,28 @@ def build(site, status, versions, main, run_start, t_obs, now):
                 "danger_m3s": point.danger_m3s, "peaks": peaks,
                 "now_q": round(float(now_q.iloc[-1]), 3) if len(now_q) else None,
                 "level": peaks.get(main, {}).get("level")}
+        g = site.gauge_of(point.name) if gauge else None
+        lvl = levels.get(g.name, pd.Series(dtype=float)) if g else None
+        measured = None
+        if g is not None:
+            gst = status.get("gauges", {}).get(g.name, {})
+            info["gauge"] = dict(gauge_summary(lvl, now), name=g.name, ok=bool(gst.get("ok")))
+            shown = lvl[(lvl.index >= table.index[0] - timedelta(minutes=10))
+                        & (lvl.index <= now)].dropna()
+            measured = {"name": g.name, "unit": "m", "times": [_iso(t) for t in shown.index],
+                        "values": [round(float(x), 3) for x in shown]}
         points_out.append(info)
         _write_json(dict(info, times=[_iso(t) for t in table.index], observed_until=_iso(t_obs),
                          series={v: [None if not np.isfinite(x) else round(float(x), 3)
-                                     for x in table[v]] for v in table}),
+                                     for x in table[v]] for v in table}, measured=measured),
                     os.path.join(data_dir, "points", f"{pid}.json"))
         csv = table.copy()
-        csv.insert(0, "part", np.where(csv.index <= t_obs, "with station rain", "forecast"))
+        csv.insert(0, "part", np.where(csv.index <= t_obs, "with station rain" if by_stations
+                                       else "with past rain", "forecast"))
+        if g is not None and len(lvl):
+            near = lvl[~lvl.index.duplicated()].sort_index()
+            csv["measured_level_m"] = near.reindex(csv.index, method="nearest",
+                                                   tolerance=pd.Timedelta("5min")).to_numpy()
         csv.index.name = "time_utc"
         csv.round(3).to_csv(os.path.join(data_dir, "points", f"{pid}.csv"))
 
@@ -128,7 +188,10 @@ def build(site, status, versions, main, run_start, t_obs, now):
                  "series": {v: [round(float(x), 2) for x in hourly[v]] for v in hourly}},
                 os.path.join(data_dir, "rain.json"))
     out = hourly.round(2)
-    out.insert(0, "part", np.where(out.index <= t_obs, "station rain", "forecast"))
+    out.insert(0, "part", np.where(out.index <= t_obs, "station rain" if by_stations
+                                   else "past rain (" + (main if past_rain(site) ==
+                                                         "forecast_model" else "none") + ")",
+                                   "forecast"))
     out.index.name = "hour_ending_utc"
     out.to_csv(os.path.join(data_dir, "rain.csv"))
     past = rain[(rain.index > t_obs - timedelta(hours=site.look_back_hours))
@@ -166,11 +229,20 @@ def build(site, status, versions, main, run_start, t_obs, now):
                                                   driver="GeoJSON")
     stations = [{"name": s, **v} for s, v in status.get("stations", {}).items()]
     from .archive import stations as kept
-    pos = {m["entry"]: (m["lat"], m["lon"], m.get("last_report_utc"))
-           for m, _ in kept(site).values()}
+    extra = {m["entry"]: dict(lat=m["lat"], lon=m["lon"], last_report_utc=m.get("last_report_utc"),
+                              **_station_now(table))
+             for m, table in kept(site).values()}
     for s in stations:
-        if s["name"] in pos:
-            s["lat"], s["lon"], s["last_report_utc"] = pos[s["name"]]
+        s.update(extra.get(s["name"], {}))
+
+    rivers = None
+    if main in versions:
+        net = os.path.join(versions[main]["dir"], "inundation", "network.npz")
+        if os.path.isfile(net):
+            try:
+                rivers = river_files(net, run_start, t_obs, data_dir)
+            except Exception as exc:                          # noqa: BLE001 — the page goes on
+                rivers = {"ok": False, "error": str(exc)}
 
     versions_out = []
     for v in site.versions():
@@ -178,7 +250,8 @@ def build(site, status, versions, main, run_start, t_obs, now):
         run = status.get("versions", {}).get(v, {})
         versions_out.append({"name": v, "ran": bool(run.get("ok")), "main": v == main,
                              "issued_utc": fc.get("issued_utc"),
-                             "note": ("no more rain after the last station report"
+                             "note": (("no more rain after the last station report"
+                                       if by_stations else "no more rain after now")
                                       if v == NO_RAIN else
                                       ("forecast feed failed; last good forecast used"
                                        if fc.get("reused") else fc.get("error", ""))),
@@ -189,6 +262,11 @@ def build(site, status, versions, main, run_start, t_obs, now):
               "run_start_utc": _iso(run_start), "forecast_hours": site.forecast_hours,
               "main": main, "versions": versions_out, "points": points_out,
               "areas": areas_out, "stations": stations, "rain": rain_summary,
+              "past_rain": past_rain(site),
+              "gauges": [dict(status.get("gauges", {}).get(g.name, {}), name=g.name,
+                              point=g.point) for g in site.river_gauges],
+              "rivers": rivers, "every_minutes": site.every_minutes,
+              "next_update_utc": _iso(now + timedelta(minutes=site.every_minutes)),
               "estimated_past_rain": bool(np.any(est[np.asarray(rain.index <= t_obs)]))
               if len(rain) else False,
               "attribution": sorted({str(f.get("info", {}).get("attribution"))
@@ -196,6 +274,95 @@ def build(site, status, versions, main, run_start, t_obs, now):
                                      if f.get("info", {}).get("attribution")})}
     _write_json(latest, os.path.join(data_dir, "latest.json"))
     return latest
+
+
+def _station_now(table):
+    """Rain in the last hour and day before the station's last report, and its newest
+    soil moisture (RTS stations) → dict."""
+    if table is None or not len(table):
+        return {}
+    t = pd.to_datetime(table["time_utc"])
+    last = t.max()
+    rain = pd.to_numeric(table["rain_mm"], errors="coerce")
+    out = {"rain_1h_mm": round(float(rain[t > last - timedelta(hours=1)].sum()), 1),
+           "rain_24h_mm": round(float(rain[t > last - timedelta(hours=24)].sum()), 1)}
+    for col, key in (("SM_10_10M", "soil_10cm_pct"), ("SM_30_10M", "soil_30cm_pct")):
+        if col in table:
+            v = pd.to_numeric(table[col], errors="coerce").dropna()
+            if len(v):
+                out[key] = round(float(v.iloc[-1]), 1)
+    return out
+
+
+PIECE_CELLS = 12                 # river layer: one line every this many cells at most
+
+
+def _sig(x):
+    """3 significant figures, for the river files."""
+    x = float(x)
+    return 0.0 if not np.isfinite(x) or x <= 0 else float(f"{x:.3g}")
+
+
+def river_files(net_path, run_start, t_obs, data_dir):
+    """
+    The main version's flow on every river cell of the model, for the page's
+    river layer: ``rivers.geojson`` (one line a reach, split at confluences; each
+    vertex's column in the flow table, its drainage area and highest expected
+    flow) and ``rivers_q.json`` (hourly highest flow of every river cell).
+    """
+    from pyproj import Transformer
+    z = np.load(net_path, allow_pickle=False)
+    meta = json.loads(str(z["meta_json"]))
+    a, b, c, d, e, f = meta["transform"]
+    rows, cols, ds = z["s_rows"], z["s_cols"], z["ds"]
+    ridx = z["river_idx"]
+    col_of = {int(cell): k for k, cell in enumerate(ridx)}
+    x = c + a * (cols + 0.5) + b * (rows + 0.5)
+    y = f + d * (cols + 0.5) + e * (rows + 0.5)
+    lon, lat = Transformer.from_crs(meta["crs"], 4326, always_xy=True).transform(x, y)
+    t = pd.DatetimeIndex([pd.Timestamp(run_start) + timedelta(seconds=float(s))
+                          for s in z["times_s"]])
+    q = pd.DataFrame(z["q_series"], index=t)
+    hourly = q.resample("1h", label="right", closed="right").max()
+    ahead = q[q.index > t_obs]
+    peak = ahead.max().to_numpy() if len(ahead) else np.zeros(len(ridx))
+    t_peak = ahead.idxmax() if len(ahead) else None
+    ups = {}
+    for cell in ridx:
+        dn = int(ds[cell])
+        if dn in col_of:
+            ups[dn] = ups.get(dn, 0) + 1
+    feats = []
+    starts = [int(cell) for cell in ridx if ups.get(int(cell), 0) != 1]
+    for start in starts:
+        chain = [start]
+        while True:
+            dn = int(ds[chain[-1]])
+            if dn not in col_of:
+                break
+            if ups.get(dn, 0) != 1:                       # a confluence: the next reach starts
+                chain.append(dn)
+                break
+            chain.append(dn)
+        for i in range(0, max(1, len(chain) - 1), PIECE_CELLS):   # pieces, so widths follow Q
+            piece = chain[i:i + PIECE_CELLS + 1]
+            if len(piece) < 2:
+                continue
+            ks = [col_of[cell] for cell in piece]
+            top = ks[int(np.argmax(peak[ks]))]
+            feats.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": [
+                [round(float(lon[cell]), 5), round(float(lat[cell]), 5)] for cell in piece]},
+                "properties": {"k": ks, "a": [round(float(z["area_km2"][cell]), 1)
+                                              for cell in piece],
+                               "q": _sig(peak[top]),
+                               "t": _iso(t_peak[top]) if t_peak is not None else None}})
+    _write_json({"type": "FeatureCollection", "features": feats},
+                os.path.join(data_dir, "rivers.geojson"))
+    _write_json({"times": [_iso(x) for x in hourly.index], "observed_until": _iso(t_obs),
+                 "q": [[_sig(v) for v in hourly[k]] for k in range(len(ridx))]},
+                os.path.join(data_dir, "rivers_q.json"))
+    return {"ok": True, "cells": int(len(ridx)), "reaches": len(feats),
+            "max_q": _sig(peak.max()) if len(peak) else 0.0}
 
 
 def area_map(depth_tif, extent_geojson, out_dir):

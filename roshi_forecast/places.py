@@ -24,6 +24,7 @@ A place's own page links back to the front page when it sits in one.
 
 import json
 import os
+import re
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -124,11 +125,19 @@ def sites(portal):
 
 # ── The front page ───────────────────────────────────────────────────────────
 
+def short_name(name):
+    """'Roshi Khola flood forecast (experimental)' → 'Roshi Khola', for lists of places."""
+    short = re.sub(r"\s*\([^)]*\)\s*$", "", name)
+    short = re.sub(r"\s+flood\s+forecasts?$", "", short, flags=re.I)
+    return short.strip() or name
+
+
 def _card(place, site, every_minutes, now):
     """What the front page says about one place (from its latest.json)."""
     latest_path = site.dir("site", "data", "latest.json")
     card = {"id": place.id, "name": site.website.get("title") or site.name,
-            "timezone": site.display_timezone, "has_forecast": False}
+            "short": short_name(site.name), "timezone": site.display_timezone,
+            "has_forecast": False}
     if not os.path.isfile(latest_path):
         return card
     with open(latest_path, encoding="utf-8") as f:
@@ -136,30 +145,44 @@ def _card(place, site, every_minutes, now):
     cycle = datetime.strptime(latest["cycle_utc"], "%Y-%m-%dT%H:%MZ")
     main = latest.get("main")
     points = []
+    rank = {None: 0, "normal": 1, "warning": 2, "danger": 3}
     for pt in latest.get("points", []):
         peaks = {v: p for v, p in (pt.get("peaks") or {}).items() if p and p.get("q") is not None}
-        forecasts = [p["q"] for v, p in peaks.items() if v != "No more rain"]
+        fc = {v: p for v, p in peaks.items() if v != "No more rain"}
+        forecasts = [p["q"] for p in fc.values()]
         m = peaks.get(main) or {}
-        points.append({"name": pt["name"], "main_q": m.get("q"), "main_utc": m.get("utc"),
-                       "level": m.get("level"), "low_q": min(forecasts) if forecasts else None,
+        worst = max((p.get("level") for p in fc.values()), key=lambda x: rank.get(x, 0),
+                    default=None)
+        points.append({"id": pt.get("id"), "name": pt["name"], "main_q": m.get("q"),
+                       "main_utc": m.get("utc"), "level": m.get("level"), "now_q": pt.get("now_q"),
+                       "low_q": min(forecasts) if forecasts else None,
                        "high_q": max(forecasts) if forecasts else None,
+                       "worst": worst, "n_forecasts": len(fc),
+                       "n_above_warning": sum(p.get("level") in ("warning", "danger")
+                                              for p in fc.values()),
                        "has_levels": pt.get("warning_m3s") is not None
                        or pt.get("danger_m3s") is not None})
+    basin_map = next((a for a in latest.get("areas", []) if a.get("basin") and a.get("ok")), None)
     card.update(has_forecast=True, name=latest.get("title") or card["name"],
                 cycle_utc=latest["cycle_utc"], t_obs_utc=latest.get("t_obs_utc"),
                 main=main, forecast_hours=latest.get("forecast_hours"), points=points,
                 late=(now - cycle) > timedelta(minutes=2.5 * every_minutes),
-                rain_next_mm=(latest.get("rain") or {}).get("next_mm", {}).get(main))
+                rain_next_mm=(latest.get("rain") or {}).get("next_mm", {}).get(main),
+                worst=max((p["worst"] for p in points), key=lambda x: rank.get(x, 0), default=None),
+                flooded_km2=basin_map.get("flooded_km2") if basin_map else None,
+                stations=len(latest.get("stations", [])),
+                stations_ok=sum(bool(x.get("ok")) for x in latest.get("stations", [])))
     return card
 
 
-def build(portal, now=None, log=print):
-    """Write the whole site to public/ → its folder."""
+def build(portal, now=None, log=print, items=None):
+    """Write the whole site to public/ → its folder.  *items*: the [(Place, Site)]
+    already read (default: every place's file read now)."""
     now = now or datetime.utcnow()
     out = portal.out()
     os.makedirs(out, exist_ok=True)
     cards = []
-    for place, site in sites(portal):
+    for place, site in (sites(portal) if items is None else items):
         src, dst = site.dir("site"), portal.out(place.id)
         if os.path.isdir(src):
             tmp = dst + ".part"
@@ -187,7 +210,7 @@ def build(portal, now=None, log=print):
     return out
 
 
-def publish(portal, log=print):
+def publish(portal, log=print, items=None):
     """Put public/ online, and every place's newest states (git only)."""
     from . import publish as pub
     p = portal.publish
@@ -207,7 +230,7 @@ def publish(portal, log=print):
         return
     bundle = os.path.join(work, "state_src")
     shutil.rmtree(bundle, ignore_errors=True)
-    for place, site in sites(portal):
+    for place, site in (sites(portal) if items is None else items):
         pub.state_bundle(site, os.path.join(bundle, place.id))
     pub.push_folder(bundle, git["remote"], git.get("state_branch", "state"),
                     os.path.join(work, "state"), "states")

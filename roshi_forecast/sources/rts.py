@@ -15,6 +15,10 @@ https://rts.wscada.net), which needs a sign-in: ``scripts/save-credentials.sh rt
   for what came after the archive's newest reading, plus 3 hours for late
   readings.
 
+The same station number with ``source: rts`` under ``river_gauges`` reads a
+river gauge's water level instead (``parameter`` default ``WTR_LVL``; 471 is the
+Roshi Khola at Panauti).
+
 Readings flagged by RTS's own quality check (``qc_flag`` other than 0) are left
 out, so the forecast treats them as missing.  The interface was read from the
 RTS web application (sign in at ``auth/login`` → a token; ``api/station/<id>``,
@@ -29,7 +33,7 @@ import numpy as np
 import pandas as pd
 
 from ..credentials import credentials
-from . import StationRain, station_source
+from . import LevelSeries, StationRain, level_source, station_source
 from ._http import FeedError, Session
 
 SERVER = "https://rts.wscada.net/"
@@ -163,6 +167,19 @@ def read_from(archived_until, want_from, now):
     return want_from
 
 
+def _meta(spec, ctx, rts, server, now):
+    """The station's details, read again once a day."""
+    path = _state_path(ctx, server, spec["station"])
+    state = _load(path)
+    meta = state.get("station")
+    read = datetime.fromisoformat(state.get("read_utc", "1970-01-01T00:00:00"))
+    if not meta or not read <= now <= read + META_MAX_AGE:
+        meta = rts.station(spec["station"])
+        state.update(station=meta, read_utc=now.isoformat())
+        _save(path, state)
+    return meta
+
+
 @station_source("rts", required=("station",),
                 optional=("parameter", "extra", "backfill_days", "server", "sign_in"),
                 help="a station of the RTS system (rts.wscada.net; needs a sign-in, "
@@ -171,13 +188,7 @@ def read_station(spec, ctx, client=None):
     server = str(spec.get("server") or SERVER)
     rts = client or Rts(server, sign_in=str(spec.get("sign_in") or "RTS"))
     now = ctx.now.replace(second=0, microsecond=0)
-    path = _state_path(ctx, server, spec["station"])
-    state = _load(path)
-    meta = state.get("station")
-    read = datetime.fromisoformat(state.get("read_utc", "1970-01-01T00:00:00"))
-    if not meta or not read <= now <= read + META_MAX_AGE:
-        meta = rts.station(spec["station"])
-        state.update(station=meta, read_utc=now.isoformat())
+    meta = _meta(spec, ctx, rts, server, now)
 
     parameter = str(spec.get("parameter") or "PCPN_10M")
     codes = [parameter] + [c for c in (spec.get("extra") or ("SM_10_10M", "SM_30_10M"))
@@ -185,7 +196,6 @@ def read_station(spec, ctx, client=None):
     if parameter not in meta["series"]:
         raise FeedError(f"RTS station {spec['station']} ({meta['name']}) has no {parameter} "
                         f"series (it has {sorted(meta['series'])})")
-    _save(path, state)
     want_from = now - timedelta(days=float(spec.get("backfill_days", 35)))
     start = read_from(ctx.archived.get(spec.get("name")), want_from, now)
     got = {code: rts.observations(meta["series"][code], start, now)
@@ -196,6 +206,25 @@ def read_station(spec, ctx, client=None):
                         rain=rain[rain.index <= now],
                         step_s=3600 if parameter.endswith("1H") else 600,
                         extra={c: s for c, s in got.items() if c != parameter and len(s)})]
+
+
+@level_source("rts", required=("station",),
+              optional=("parameter", "backfill_days", "server", "sign_in"),
+              help="a river gauge of the RTS system: its water level (WTR_LVL)")
+def read_level(spec, ctx, client=None):
+    server = str(spec.get("server") or SERVER)
+    rts = client or Rts(server, sign_in=str(spec.get("sign_in") or "RTS"))
+    now = ctx.now.replace(second=0, microsecond=0)
+    meta = _meta(spec, ctx, rts, server, now)
+    parameter = str(spec.get("parameter") or "WTR_LVL")
+    if parameter not in meta["series"]:
+        raise FeedError(f"RTS station {spec['station']} ({meta['name']}) has no {parameter} "
+                        f"series (it has {sorted(meta['series'])})")
+    want_from = now - timedelta(days=float(spec.get("backfill_days", 35)))
+    start = read_from(ctx.archived.get(spec.get("name")), want_from, now)
+    level = rts.observations(meta["series"][parameter], start, now)
+    return LevelSeries(level=level[level.index <= now], lat=meta["lat"], lon=meta["lon"],
+                       info={"gauge": meta["name"], "station": int(spec["station"])})
 
 
 def list_stations(client=None):

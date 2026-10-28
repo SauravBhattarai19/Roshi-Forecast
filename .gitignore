@@ -10,6 +10,8 @@ setup_check/
 status.json
 check_map.html
 .cycle.lock
+.serve.lock
+old/
 *.log
 **/rehearsal/imerg_2024/
 public/

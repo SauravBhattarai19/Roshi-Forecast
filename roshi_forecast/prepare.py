@@ -169,6 +169,98 @@ def map_dems(site, run_dir, log=print):
         basinmap.prepare(site, run_dir, model_config(site, run_dir), log)
 
 
+GROW_TRIES = 6
+
+
+def basin_cut_sides(cfg):
+    """Sides of the DEM box ('west', 'south', 'east', 'north') the delineated basin
+    runs into — the basin then goes on beyond the DEM and is cut there."""
+    import numpy as np
+    import rasterio
+    from rasterio.transform import xy
+    from pyproj import Transformer
+    dem = os.path.join(cfg.OUTPUT_DIR, "reprojected_dem.tif")
+    if not (os.path.isfile(dem) and os.path.isfile(cfg.ROUTING_WATERSHED_MASK_PATH)):
+        return []
+    with rasterio.open(cfg.ROUTING_WATERSHED_MASK_PATH) as r:
+        basin, transform, crs, res = r.read(1) > 0, r.transform, r.crs, abs(r.res[0])
+    with rasterio.open(dem) as r:
+        valid = ~np.ma.getmaskarray(r.read(1, masked=True))
+    if valid.shape != basin.shape:
+        return []
+    pad = np.pad(valid, 1, constant_values=False)
+    beside_nodata = np.zeros_like(valid)
+    for dy in (0, 1, 2):
+        for dx in (0, 1, 2):
+            beside_nodata |= ~pad[dy:dy + valid.shape[0], dx:dx + valid.shape[1]]
+    rows, cols = np.nonzero(basin & beside_nodata)
+    if not len(rows):
+        return []
+    lon, lat = Transformer.from_crs(crs, "EPSG:4326", always_xy=True).transform(
+        *xy(transform, rows, cols))
+    lon, lat = np.asarray(lon), np.asarray(lat)
+    w, s, e, n = cfg.DEM_BOUNDS_WGS84
+    tol_lat = 3 * res / 111_000.0                   # within 3 cells of a side
+    tol_lon = tol_lat / max(0.2, np.cos(np.radians((s + n) / 2)))
+    sides = {"west": (lon - w, tol_lon), "east": (e - lon, tol_lon),
+             "south": (lat - s, tol_lat), "north": (n - lat, tol_lat)}
+    return sorted(k for k, (d, tol) in sides.items() if (d < tol).any())
+
+
+def grow_box(box, sides, share=0.5, least_deg=0.05):
+    """The box made bigger by *share* of its size on each side in *sides*."""
+    w, s, e, n = box
+    dx, dy = max(least_deg, share * (e - w)), max(least_deg, share * (n - s))
+    return [round(w - dx * ("west" in sides), 4), round(s - dy * ("south" in sides), 4),
+            round(e + dx * ("east" in sides), 4), round(n + dy * ("north" in sides), 4)]
+
+
+def write_box(site, box):
+    """Put DEM_BOUNDS_WGS84 = *box* into the model file (its comments kept)."""
+    import re
+    with open(site.model, encoding="utf-8") as f:
+        text = f.read()
+    line = f"DEM_BOUNDS_WGS84: {box}   # grown by setup until the whole basin fitted"
+    new, n = re.subn(r"(?m)^DEM_BOUNDS_WGS84\s*:.*$", line, text)
+    if not n:
+        raise SetupError(f"the basin runs past the DEM box, but {site.model} has no "
+                         f"'DEM_BOUNDS_WGS84:' line to widen; set it to about {box}")
+    with open(site.model, "w", encoding="utf-8") as f:
+        f.write(new)
+
+
+def terrain(site, log=print, fresh=False):
+    """The process_dem stage into static/.  With a downloaded DEM (DEM_BOUNDS_WGS84),
+    the box is widened until the basin above the outlet fits in it."""
+    from MRRpy.pipeline import run_pipeline
+    for attempt in range(GROW_TRIES + 1):
+        cfg = model_config(site)
+        downloaded = not cfg.DEM_PATH and bool(cfg.DEM_BOUNDS_WGS84)
+        raw = os.path.join(cfg.OUTPUT_DIR, "raw_dem_gee.tif")
+        if downloaded and (fresh or attempt) and os.path.isfile(raw):
+            os.remove(raw)                          # the download is kept: drop the old box
+        log("  Terrain: preparing the DEM, flow directions and the basin …")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            run_pipeline(cfg, stages=("process_dem",), on_log=lambda *_: None)
+        sides = basin_cut_sides(model_config(site)) if cfg.DEM_BOUNDS_WGS84 else []
+        if not sides:
+            log(f"  Terrain: done ({cfg.OUTPUT_DIR})")
+            return
+        if not downloaded:
+            log(f"  Terrain: done, but the basin reaches the {', '.join(sides)} edge of "
+                f"{cfg.DEM_PATH}: it may go on beyond it (use a bigger DEM).")
+            return
+        if attempt == GROW_TRIES:
+            raise SetupError(f"the basin still runs past the {', '.join(sides)} side of the "
+                             f"DEM box {list(cfg.DEM_BOUNDS_WGS84)} after {GROW_TRIES} "
+                             "widenings: is OUTPUT_POINT on the right river?")
+        box = grow_box(list(cfg.DEM_BOUNDS_WGS84), sides)
+        write_box(site, box)
+        log(f"  Terrain: the basin runs past the {', '.join(sides)} side of the DEM box; "
+            f"widened to {box} in {os.path.basename(site.model)}.")
+
+
 def latest_flood_run(site):
     """The newest run folder with recorded flows (a cycle's main version, or the warm-up)."""
     import glob
@@ -181,7 +273,6 @@ def latest_flood_run(site):
 
 def setup_site(site, now=None, log=print, force_terrain=False, warm=True, parallel=True):
     """Prepare *site* once (see the module docstring) → summary dict."""
-    from MRRpy.pipeline import run_pipeline
     now = (now or utcnow()).replace(second=0, microsecond=0)
     for d in ("static", "archive", "states", "cycles", "site"):
         os.makedirs(site.dir(d), exist_ok=True)
@@ -189,11 +280,7 @@ def setup_site(site, now=None, log=print, force_terrain=False, warm=True, parall
     pin_soil_date(site, now, log)
     cfg = model_config(site)
     if force_terrain or not os.path.isfile(cfg.ROUTING_DEM_PATH):
-        log("  Terrain: preparing the DEM, flow directions and the basin …")
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            run_pipeline(cfg, stages=("process_dem",), on_log=lambda *_: None)
-        log(f"  Terrain: done ({cfg.OUTPUT_DIR})")
+        terrain(site, log, fresh=force_terrain)
     else:
         log("  Terrain: already prepared.")
     check_layers(site, log)

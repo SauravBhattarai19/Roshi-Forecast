@@ -4,8 +4,9 @@ sitefile.py — the forecast file: what a live forecast reads, runs and shows.
 
 The forecast file is a short YAML file next to the usual MRRpy settings file
 (``model:``).  It lists the rain stations, the rain forecasts, the river inflows,
-the points that get a hydrograph and the areas that get a flood map — each as
-many as wanted.  ``load_site`` reads and checks it; every problem is reported at
+the points that get a hydrograph, the river gauges whose measured level is shown
+under a point's hydrograph and the areas that get a flood map — each as many as
+wanted.  ``load_site`` reads and checks it; every problem is reported at
 once, in plain words, with "did you mean" for a misspelt key.  ``template()`` is
 the commented file ``roshi-forecast new`` writes.
 """
@@ -44,6 +45,12 @@ class Inflow(Entry):
     lon: float = 0.0
     ahead: str = "hold"            # after the last reading: hold | recede
     recede_hours: float = 24.0
+
+
+@dataclass
+class RiverGauge(Entry):
+    """A measured water level, drawn under the hydrograph of *point*."""
+    point: str = ""
 
 
 @dataclass
@@ -98,6 +105,7 @@ class Site:
     no_rain_version: bool = True
     inflows: List[Inflow] = field(default_factory=list)
     hydrograph_points: List[Point] = field(default_factory=list)
+    river_gauges: List[RiverGauge] = field(default_factory=list)
     flood_areas: List[Area] = field(default_factory=list)
     basin_map: Optional[BasinMap] = None
     website: dict = field(default_factory=dict)
@@ -123,6 +131,10 @@ class Site:
     def forecast(self, name):
         return next((f for f in self.rain_forecasts if f.name == name), None)
 
+    def gauge_of(self, point_name):
+        """The river gauge drawn under the point called *point_name*, or None."""
+        return next((g for g in self.river_gauges if g.point == point_name), None)
+
     def has_maps(self):
         """Does a cycle draw any flood map (so the main run records the flows)?"""
         return bool(self.flood_areas or self.basin_map)
@@ -147,6 +159,7 @@ _TOP = {
     "no_rain_version": "also run a version with no more rain",
     "inflows": "list of river inflows at the model edge",
     "hydrograph_points": "list of points that get a hydrograph",
+    "river_gauges": "list of river gauges whose measured level is shown under a point",
     "flood_areas": "list of areas that get a flood map",
     "basin_map": "a flood map of the whole basin, e.g. {method: 2d, boxes: auto}",
     "website": "the web page: title, publish",
@@ -340,6 +353,21 @@ def parse_site(data, path="forecast.yaml"):
         site.hydrograph_points.append(Point(name, lat or 0.0, lon or 0.0, warn, danger,
                                             int(item.get("snap_radius_cells", 2))))
 
+    points = [p.name for p in site.hydrograph_points]
+    for name, source, opts, item in _entries(data.get("river_gauges"), "river_gauges",
+                                             regs["level"], base, errors, extra_keys=("point",)):
+        point = str(item.get("point") or "")
+        if not point:
+            errors.append(f"river_gauges '{name}' needs point: the hydrograph point it is "
+                          f"drawn under ({', '.join(points) or 'none listed'}).")
+        elif point not in points:
+            errors.append(f"river_gauges '{name}': point '{point}' is not one of the "
+                          f"hydrograph_points{_did_you_mean(point, points)} "
+                          f"({', '.join(points) or 'none listed'}).")
+        elif any(g.point == point for g in site.river_gauges):
+            errors.append(f"river_gauges '{name}': point '{point}' already has a gauge.")
+        site.river_gauges.append(RiverGauge(name, source, opts, point=point))
+
     seen = set()
     for i, item in enumerate(data.get("flood_areas") or [], 1):
         where = f"flood_areas #{i}"
@@ -517,6 +545,10 @@ inflows: []                    # rivers entering at the model edge, e.g.
 
 hydrograph_points:             # any number; warning/danger levels are optional
   - {name: Town bridge, lat: 27.60, lon: 85.52, warning_m3s: 150, danger_m3s: 300}
+
+river_gauges: []               # measured water level, drawn under a point's hydrograph
+  # - {name: Town gauge, source: csv, path: https://example.org/level.csv, point: Town bridge}
+  # - {name: Roshi Khola at Panauti, source: rts, station: 471, point: Panauti gauge}
 
 flood_areas:                   # any number; box = [west, south, east, north]
   - {name: Town, box: [85.50, 27.58, 85.54, 27.61], method: hand}

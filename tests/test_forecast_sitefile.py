@@ -121,3 +121,22 @@ def test_basin_map_settings(folder):
     for words in ("method must be 2d or hand", "did you mean 'boxes'", "[3, 3]",
                   "also a flood area's"):
         assert words in str(err.value), words
+
+
+def test_river_gauges_name_the_point_they_are_drawn_under(folder):
+    data = dict(GOOD, river_gauges=[{"name": "Panauti gauge", "source": "rts", "station": 471,
+                                     "point": "Panauti"}])
+    site = _load(folder, data)
+    g = site.gauge_of("Panauti")
+    assert (g.name, g.source, g.options) == ("Panauti gauge", "rts", {"station": 471})
+    assert site.gauge_of("Khopasi") is None
+    data["river_gauges"] = [{"name": "A", "source": "rts", "station": 471, "point": "Panuti"},
+                            {"name": "B", "source": "rts", "station": 471},
+                            {"name": "C", "source": "csv", "path": "l.csv", "point": "Panauti",
+                             "stage": 1}]
+    with pytest.raises(SiteFileError) as e:
+        _load(folder, data)
+    msg = str(e.value)
+    assert "point 'Panuti' is not one of the hydrograph_points — did you mean 'Panauti'?" in msg
+    assert "river_gauges 'B' needs point:" in msg
+    assert "'stage' is not a setting of source 'csv'" in msg

@@ -8,6 +8,7 @@ more, so every reading is kept:
 
     archive/stations/<station>.csv.gz   time_utc, rain_mm, step_s, other series
     archive/stations/<station>.json     name, lat, lon, last report
+    archive/levels/<gauge>.csv.gz       time_utc, level_m (river gauges)
     archive/forecasts/<version>/<YYYYmmddTHHMMZ>.csv.gz   rain at each point
     archive/forecasts/<version>/<…>.json                   the points, issue time
 
@@ -103,6 +104,30 @@ def stations(site):
         table = read_station_table(meta_path[:-5] + ".csv.gz")
         out[os.path.basename(meta_path)[:-5]] = (meta, table)
     return out
+
+
+# ── River gauges ─────────────────────────────────────────────────────────────
+
+def level_path(site, name):
+    return site.dir("archive", "levels", slug(name) + ".csv.gz")
+
+
+def read_level(site, name):
+    """The kept water level of gauge *name* → Series (m, UTC index)."""
+    path = level_path(site, name)
+    if not os.path.isfile(path):
+        return pd.Series(dtype=float)
+    df = pd.read_csv(path, compression="gzip", parse_dates=["time_utc"])
+    return pd.Series(df["level_m"].to_numpy(float), index=pd.DatetimeIndex(df["time_utc"]))
+
+
+def save_level(site, name, level):
+    """Merge new readings into the kept level of gauge *name* → the whole Series."""
+    both = pd.concat([read_level(site, name), level.astype(float)])
+    both = both[~both.index.duplicated(keep="last")].sort_index().dropna()
+    _write_csv(pd.DataFrame({"time_utc": both.index, "level_m": both.values}),
+               level_path(site, name))
+    return both
 
 
 # ── Forecasts ────────────────────────────────────────────────────────────────

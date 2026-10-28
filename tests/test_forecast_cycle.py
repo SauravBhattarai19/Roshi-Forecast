@@ -171,7 +171,7 @@ def test_the_web_page_data(site):
     assert latest["title"] == "Tiny test forecast"
     assert latest["t_obs_utc"] == "2026-03-01T12:00Z"
     names = [p["name"] for p in latest["points"]]
-    assert names == ["Outlet bridge", "Outlet (end of the model)"]
+    assert names == ["Outlet bridge"]          # at the outlet: no second 'Outlet' point
     pk = latest["points"][0]["peaks"]["Fake"]
     assert pk["q"] > 0 and pk["level"] in ("warning", "normal")
     pt = json.load(open(os.path.join(data, "points", "outlet_bridge.json")))
@@ -184,6 +184,57 @@ def test_the_web_page_data(site):
         assert os.path.isfile(site.dir("site", f))
     assert os.path.isfile(os.path.join(data, "basin.geojson"))
     assert "test data" in latest["attribution"]
+
+
+def _rewrite(site, **changes):
+    data = yaml.safe_load(open(site.path))
+    data.update(changes)
+    with open(site.path, "w") as f:
+        yaml.safe_dump(data, f, sort_keys=False)
+    return load_site(site.path)
+
+
+def test_a_river_gauge_is_drawn_under_its_point(site):
+    t = pd.date_range(T0 - timedelta(days=3), T0 + timedelta(hours=1), freq="10min")
+    level = 100.0 + np.arange(len(t)) * 0.001                    # rising 6 mm an hour
+    pd.DataFrame({"time_utc": t.strftime("%Y-%m-%d %H:%M"), "level_m": level}).to_csv(
+        os.path.join(os.path.dirname(site.path), "level.csv"), index=False)
+    site = _rewrite(site, river_gauges=[{"name": "Bridge gauge", "source": "csv",
+                                         "path": "level.csv", "point": "Outlet bridge"}])
+    _run(site, T0)
+    data = site.dir("site", "data")
+    latest = json.load(open(os.path.join(data, "latest.json")))
+    assert latest["past_rain"] == "stations"
+    g = latest["gauges"][0]
+    assert (g["name"], g["point"], g["ok"], g["last_report_utc"]) == (
+        "Bridge gauge", "Outlet bridge", True, "2026-03-01 12:05")     # nothing after now (12:05)
+    sm = latest["points"][0]["gauge"]
+    assert sm["now_m"] == pytest.approx(level[t <= T0][-1], abs=1e-3)
+    assert sm["change_1h_m"] == pytest.approx(0.006, abs=1e-3)
+    assert sm["above_low_m"] == pytest.approx(level[t <= T0][-1] - 100.0, abs=1e-3)
+    pt = json.load(open(os.path.join(data, "points", "outlet_bridge.json")))
+    m = pt["measured"]
+    assert m["name"] == "Bridge gauge" and len(m["times"]) == len(m["values"]) > 60
+    assert m["times"][0] >= pt["times"][0][:14] and m["times"][-1] == "2026-03-01T12:05Z"
+    csv = pd.read_csv(os.path.join(data, "points", "outlet_bridge.csv"))
+    assert csv["measured_level_m"].notna().sum() > 60
+    kept = pd.read_csv(site.dir("archive", "levels", "bridge_gauge.csv.gz"))
+    assert len(kept) == int((t <= T0).sum())                      # the whole history is kept
+
+
+def test_without_rain_stations_the_past_rain_is_the_main_forecast_s(site):
+    site = _rewrite(site, rain_stations=[])
+    st = _run(site, T0)
+    assert st["ok"] and st["t_obs_utc"] == "2026-03-01 12:00"     # now, to the 10 minutes
+    data = site.dir("site", "data")
+    latest = json.load(open(os.path.join(data, "latest.json")))
+    assert latest["past_rain"] == "forecast_model" and latest["stations"] == []
+    assert [v["note"] for v in latest["versions"] if v["name"] == "No more rain"] == [
+        "no more rain after now"]
+    rain = pd.read_csv(os.path.join(data, "rain.csv"))
+    assert set(rain["part"]) == {"past rain (Fake)", "forecast"}
+    past = rain[rain["part"] != "forecast"]
+    assert past["Fake"].sum() > 0                                  # the Fake forecast's own rain
 
 
 def test_catch_up_after_a_long_gap(site):
@@ -317,3 +368,87 @@ def test_basin_boxes_leave_out_land_outside_the_basin(tmp_path):
     assert b["box"][2] - b["core"][2] == pytest.approx(1.0 / (111.32 * np.cos(np.radians(27.1))), rel=1e-3)
     auto, (nx, ny) = plan_boxes(str(path), boxes="auto", box_cells=100_000)
     assert nx * ny >= 20000 * 22000 / 30 ** 2 / 100_000 and len(auto) < nx * ny
+
+
+def test_rivers_anywhere_on_the_map(site, tiny_basin):
+    """Every river cell's forecast flow, for clicks on the map (main version)."""
+    from roshi_forecast.sitefile import BasinMap
+    site.basin_map = BasinMap(method="2d", boxes=[1, 1], dem="model_grid", threads=1)
+    FAKE["mm_per_h"] = 40.0
+    _run(site, T0)
+    latest = json.load(open(site.dir("site", "data", "latest.json")))
+    assert latest["rivers"]["ok"] and latest["every_minutes"] == 30
+    assert latest["next_update_utc"] > latest["cycle_utc"]
+    g = json.load(open(site.dir("site", "data", "rivers.geojson")))
+    rq = json.load(open(site.dir("site", "data", "rivers_q.json")))
+    assert len(rq["q"]) == latest["rivers"]["cells"] > 0
+    assert len(rq["times"]) == len(rq["q"][0]) and rq["observed_until"]
+    for f in g["features"]:
+        p = f["properties"]
+        assert len(p["k"]) == len(p["a"]) <= len(f["geometry"]["coordinates"])
+        assert p["q"] == pytest.approx(max(max(rq["q"][k]) for k in p["k"]), rel=0.01)
+    hyd = _hyd(site, T0)                         # the outlet's cell is a river cell
+    assert max(max(q) for q in rq["q"]) == pytest.approx(hyd.max(), rel=0.05)
+
+
+def _write_fresh_place(root, tiny_basin):
+    dem, (lat, lon) = tiny_basin
+    d = root / "places" / "tiny"
+    d.mkdir(parents=True)
+    model = {"DEM_PATH": dem, "OUTPUT_POINT": [lat, lon], "TARGET_CRS_EPSG": "EPSG:32645",
+             "DELINEATION_ENGINE": "pysheds", "ROUTING_SCHEME": "kinematic",
+             "CFL_DT_MAX": 30.0, "OUTPUT_INTERVAL_SECONDS": 600, "CHANNEL_QBF_M3S": 1.0,
+             "RUNOFF_SOURCE": "physical", "RUNOFF_MECHANISMS": ["infiltration_excess"],
+             "GA_KSAT_MMHR": 2.0}
+    (d / "model.yaml").write_text(yaml.safe_dump(model))
+    now = datetime.utcnow()
+    _station_csv(d / "gauge.csv", now, start=now - timedelta(days=3))
+    fc = {"name": "Tiny", "model": "model.yaml", "warm_up_days": 1, "forecast_hours": 6,
+          "rain_stations": [{"name": "Gauge", "source": "csv", "path": "gauge.csv",
+                             "lat": lat + 0.003, "lon": lon}],
+          "rain_forecasts": [{"name": "Fake", "source": "test_fake"}],
+          "hydrograph_points": [{"name": "Outlet", "lat": lat, "lon": lon}]}
+    (d / "forecast.yaml").write_text(yaml.safe_dump(fc, sort_keys=False))
+    (root / "places.yaml").write_text("title: Test\nplaces:\n  - places/tiny/forecast.yaml\n")
+    return d
+
+
+def test_serve_sets_up_a_new_place_and_follows_changes(tiny_basin, tmp_path):
+    """Hand-over: an operator only edits files; 'serve' does the rest."""
+    from argparse import Namespace
+    from roshi_forecast import autopilot
+    from roshi_forecast.cli import tend
+    d = _write_fresh_place(tmp_path, tiny_basin)
+    args = Namespace(no_publish=True, serial=True, only_if_stale=None, restore_state=False)
+    settings = autopilot.Settings(str(tmp_path / "places.yaml"))
+    said = []
+    assert tend(args, *settings.read(), log=said.append) == 0          # new: set up + run
+    assert any("setting up (new place)" in s for s in said)
+    cards = json.load(open(tmp_path / "public" / "places.json"))["places"]
+    assert cards[0]["has_forecast"] and os.path.isfile(
+        tmp_path / "public" / "tiny" / "data" / "latest.json")
+    site = settings.sites["tiny"]
+    first = last = cyc.last_status(site)["cycle_utc"]
+    assert autopilot.place_state(site).need == ""
+
+    fc = yaml.safe_load((d / "forecast.yaml").read_text())          # a level: no new setup
+    fc["hydrograph_points"][0]["warning_m3s"] = 5.0
+    (d / "forecast.yaml").write_text(yaml.safe_dump(fc, sort_keys=False))
+    portal, items = settings.read()
+    assert items[0][1].hydrograph_points[0].warning_m3s == 5.0
+    assert autopilot.place_state(items[0][1]).need == ""
+
+    model = yaml.safe_load((d / "model.yaml").read_text())           # the model: set up again
+    model["MANNINGS_N"] = 0.06
+    (d / "model.yaml").write_text(yaml.safe_dump(model))
+    said.clear()
+    assert tend(args, *settings.read(), log=said.append) == 0
+    assert any("model settings changed" in s for s in said)
+    assert os.listdir(d / "old") and os.path.isdir(d / "static")
+    last = cyc.last_status(settings.sites["tiny"])["cycle_utc"]
+    assert last >= first
+    assert autopilot.place_state(settings.sites["tiny"]).need == ""
+
+    (d / "forecast.yaml").write_text("name: Tiny\nmodle: model.yaml\n")    # a typo
+    portal, items = settings.read()
+    assert items and "the last good version is used" in settings.problems[0]
