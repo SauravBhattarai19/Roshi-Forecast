@@ -107,3 +107,17 @@ def test_cli_new_and_github_workflow(tmp_path, capsys):
     step = wf["jobs"]["cycle"]["steps"][-1]["run"]
     assert "--only-if-stale 45" in step and "--restore-state" in step
     assert wf[True]["schedule"][0]["cron"] == "7,37 * * * *"           # YAML reads 'on' as True
+
+
+def test_basin_map_settings(folder):
+    s = _load(folder, dict(GOOD, basin_map="2d"))
+    assert (s.basin_map.method, s.basin_map.boxes, s.basin_map.name) == ("2d", "auto", "Whole basin")
+    assert s.has_maps()
+    s = _load(folder, dict(GOOD, basin_map={"method": "hand", "boxes": [3, 3]}))
+    assert s.basin_map.boxes == [1, 1]                        # HAND: one box is quick
+    with pytest.raises(SiteFileError) as err:
+        _load(folder, dict(GOOD, basin_map={"method": "3d", "boxs": 2, "boxes": [0, 2],
+                                            "name": "Panauti town"}))
+    for words in ("method must be 2d or hand", "did you mean 'boxes'", "[3, 3]",
+                  "also a flood area's"):
+        assert words in str(err.value), words

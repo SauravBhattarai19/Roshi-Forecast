@@ -66,6 +66,20 @@ class Area:
 
 
 @dataclass
+class BasinMap:
+    """One flood map of the whole basin, drawn as overlapping boxes (basinmap.py)."""
+    name: str = "Whole basin"
+    method: str = "2d"             # 2d | hand
+    boxes: object = "auto"         # auto | [west–east, south–north]
+    overlap_km: float = 1.5
+    dem: str = "auto"
+    dem_scale_m: Optional[float] = None
+    box_cells: int = 250_000       # boxes: auto aims at about this many cells a box
+    workers: int = 0               # boxes at the same time (0 = all)
+    threads: int = 0               # CPU threads a box (0 = the cores shared out)
+
+
+@dataclass
 class Site:
     path: str                                  # the forecast file
     name: str
@@ -85,6 +99,7 @@ class Site:
     inflows: List[Inflow] = field(default_factory=list)
     hydrograph_points: List[Point] = field(default_factory=list)
     flood_areas: List[Area] = field(default_factory=list)
+    basin_map: Optional[BasinMap] = None
     website: dict = field(default_factory=dict)
     workers: int = 0                           # parallel model runs (0 = one per version)
     threads_per_run: int = 8
@@ -108,6 +123,10 @@ class Site:
     def forecast(self, name):
         return next((f for f in self.rain_forecasts if f.name == name), None)
 
+    def has_maps(self):
+        """Does a cycle draw any flood map (so the main run records the flows)?"""
+        return bool(self.flood_areas or self.basin_map)
+
 
 NO_RAIN = "No more rain"
 
@@ -129,6 +148,7 @@ _TOP = {
     "inflows": "list of river inflows at the model edge",
     "hydrograph_points": "list of points that get a hydrograph",
     "flood_areas": "list of areas that get a flood map",
+    "basin_map": "a flood map of the whole basin, e.g. {method: 2d, boxes: auto}",
     "website": "the web page: title, publish",
     "workers": "model runs at the same time (0 = all versions at once)",
     "threads_per_run": "CPU threads for each model run",
@@ -137,6 +157,8 @@ _TOP = {
 }
 _POINT = {"name", "lat", "lon", "warning_m3s", "danger_m3s", "snap_radius_cells"}
 _AREA = {"name", "box", "method", "dem", "dem_scale_m"}
+_BASIN_MAP = {"name", "method", "boxes", "overlap_km", "dem", "dem_scale_m", "box_cells",
+              "workers", "threads"}
 _INFLOW = {"name", "lat", "lon", "source", "ahead", "recede_hours"}
 _WEBSITE = {"title", "publish", "notice", "links"}
 _PATH_KEYS = ("path", "gauges", "timeseries")
@@ -353,6 +375,52 @@ def parse_site(data, path="forecast.yaml"):
         site.flood_areas.append(Area(name, box, method, dem,
                                      float(scale) if scale is not None else None))
 
+    bm = data.get("basin_map")
+    if bm in ("2d", "hand"):
+        bm = {"method": bm}
+    if bm:
+        if not isinstance(bm, dict):
+            errors.append("basin_map must be 2d, hand or a set of keys, e.g. "
+                          "{method: 2d, boxes: auto}.")
+            bm = {}
+        for k in bm:
+            if k not in _BASIN_MAP:
+                errors.append(f"basin_map: '{k}' is not a basin map setting"
+                              f"{_did_you_mean(k, _BASIN_MAP)}.")
+        b = BasinMap()
+        b.name = str(bm.get("name", b.name))
+        if slug(b.name) in seen:
+            errors.append(f"basin_map: its name '{b.name}' is also a flood area's.")
+        b.method = str(bm.get("method", b.method))
+        if b.method not in ("hand", "2d"):
+            errors.append("basin_map: method must be 2d or hand.")
+        boxes = bm.get("boxes", "auto")
+        if boxes != "auto" and not (isinstance(boxes, (list, tuple)) and len(boxes) == 2
+                                    and all(isinstance(v, int) and v >= 1 for v in boxes)):
+            errors.append("basin_map: boxes must be auto or [west–east, south–north], "
+                          "e.g. [3, 3].")
+            boxes = "auto"
+        b.boxes = boxes if boxes == "auto" else [int(v) for v in boxes]
+        if b.method == "hand":
+            b.boxes = [1, 1]                       # HAND is quick on the whole basin at once
+        b.overlap_km = _num(bm.get("overlap_km", b.overlap_km), "basin_map: overlap_km",
+                            errors, lo=0)
+        b.dem = str(bm.get("dem", b.dem))
+        if b.dem.lower().endswith((".tif", ".tiff")):
+            b.dem = _resolve(base, b.dem)
+        if bm.get("dem_scale_m") is not None:
+            b.dem_scale_m = _num(bm["dem_scale_m"], "basin_map: dem_scale_m", errors, lo=1)
+        for key in ("box_cells", "workers", "threads"):
+            if key in bm:
+                v = bm[key]
+                if not isinstance(v, int) or v < 0 or (key == "box_cells" and v < 10_000):
+                    errors.append(f"basin_map: {key} must be a whole number"
+                                  + (" of at least 10000" if key == "box_cells" else ", 0 or more")
+                                  + ".")
+                else:
+                    setattr(b, key, v)
+        site.basin_map = b
+
     web = data.get("website") or {}
     if not isinstance(web, dict):
         errors.append("website must be a set of keys (title, publish).")
@@ -452,6 +520,9 @@ hydrograph_points:             # any number; warning/danger levels are optional
 
 flood_areas:                   # any number; box = [west, south, east, north]
   - {name: Town, box: [85.50, 27.58, 85.54, 27.61], method: hand}
+
+# basin_map: {method: 2d, boxes: auto}   # a flood map of the whole basin, drawn in
+                                         # overlapping boxes side by side
 
 website:
   title: My river flood forecast (experimental)

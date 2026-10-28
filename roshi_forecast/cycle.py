@@ -420,7 +420,7 @@ def _cycle(site, now, log, publish, parallel):
         link_static(site.dir("static"), vdir)
         cfg = _version_config(site, version, vdir, run_start, hours, rain_paths, restart,
                               save_hours if version == main else None, inflow_paths,
-                              record_flood=(version == main and bool(site.flood_areas)))
+                              record_flood=(version == main and site.has_maps()))
         jobs[version] = (cfg.to_dict(), run_start.strftime("%Y-%m-%d %H:%M"),
                          os.path.join(vdir, "run.log"))
         rain_info[version] = {"dir": vdir, "mean_mm": table.mean(axis=1), "estimated": est}
@@ -538,6 +538,25 @@ def _flood_maps(site, main_cfg, main_dir, status, log):
             status.data["areas"][area.name] = {"ok": False, "error": str(exc),
                                                "log_end": "\n".join(lines[-5:])}
             log(f"  Flood map {area.name}: FAILED ({exc})")
+    if site.basin_map:
+        _basin_map(site, main_cfg, main_dir, status, log)
+
+
+def _basin_map(site, main_cfg, main_dir, status, log):
+    from MRRpy.config import Config
+    from . import basinmap
+    bm, t0 = site.basin_map, time.time()
+    out_dir = os.path.join(main_dir, "areas", slug(bm.name))
+    try:
+        summary = basinmap.draw(site, Config.from_dict(main_cfg), main_dir, out_dir, log)
+        status.data["areas"][bm.name] = {"ok": True, "dir": out_dir, "basin": True,
+                                         "seconds": round(time.time() - t0, 1),
+                                         "boxes": len(summary["boxes"])}
+        log(f"  Flood map {bm.name}: done in {time.time() - t0:.0f} s "
+            f"({len(summary['boxes'])} boxes, {summary['flooded_km2']:g} km² under water)")
+    except Exception as exc:                              # noqa: BLE001
+        status.data["areas"][bm.name] = {"ok": False, "basin": True, "error": str(exc)}
+        log(f"  Flood map {bm.name}: FAILED ({exc})")
 
 
 def _prune_cycles(site, now):

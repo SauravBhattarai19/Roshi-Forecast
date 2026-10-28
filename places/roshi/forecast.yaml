@@ -39,6 +39,9 @@ flood_areas:
   - {name: Panauti town, box: [85.505, 27.574, 85.532, 27.592], method: 2d}
   - {name: Mangaltar (BP Highway), box: [85.725, 27.465, 85.762, 27.487], method: 2d}
 
+# The whole basin in 2D at 30 m (FABDEM), drawn as overlapping boxes side by side
+basin_map: {method: 2d, boxes: auto}
+
 website:
   title: Roshi Khola flood forecast (experimental)
   notice: Run as a research test of MRRpy. The warning and danger levels are placeholders for testing, not real levels.

@@ -141,15 +141,18 @@ def build(site, status, versions, main, run_start, t_obs, now):
                                 for v in rain}}
 
     areas_out = []
-    for area in site.flood_areas:
-        st = status.get("areas", {}).get(area.name, {})
-        entry = {"id": slug(area.name), "name": area.name, "box": list(area.box),
-                 "method": area.method, "ok": bool(st.get("ok"))}
+    maps = [(a.name, list(a.box), a.method, False) for a in site.flood_areas]
+    if site.basin_map:                                    # shown first
+        maps.insert(0, (site.basin_map.name, None, site.basin_map.method, True))
+    for name, box, method, basin in maps:
+        st = status.get("areas", {}).get(name, {})
+        entry = {"id": slug(name), "name": name, "box": box, "basin": basin,
+                 "method": method, "ok": bool(st.get("ok"))}
         if st.get("ok"):
             try:
                 entry.update(area_map(os.path.join(st["dir"], "flood_depth_max.tif"),
                                       os.path.join(st["dir"], "flood_extent_max.geojson"),
-                                      site.dir("site", "maps", slug(area.name))))
+                                      site.dir("site", "maps", slug(name))))
             except Exception as exc:                          # noqa: BLE001
                 entry.update(ok=False, error=f"map image: {exc}")
         else:

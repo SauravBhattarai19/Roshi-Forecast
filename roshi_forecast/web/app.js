@@ -211,7 +211,7 @@
     });
     data.areas.forEach(function (a) {
       var b = a.box;
-      L.rectangle([[b[1], b[0]], [b[3], b[2]]], { color: "#000", weight: 1,
+      if (b) L.rectangle([[b[1], b[0]], [b[3], b[2]]], { color: "#000", weight: 1,
         dashArray: "4 4", fill: false }).bindTooltip(a.name).addTo(group);
       var o = el("option", { value: a.id }, a.name + (a.ok ? "" : " (no map this time)"));
       if (!a.ok) o.disabled = true;
@@ -231,7 +231,7 @@
     if (!a || !a.ok) return;
     overlay = L.imageOverlay(a.png + "?t=" + Date.now(), a.bounds,
       { opacity: +$("opacity").value, alt: "Deepest expected water in " + a.name }).addTo(map);
-    if (zoom) map.fitBounds(a.bounds);
+    if (zoom) map.fitBounds(a.bounds, { maxZoom: a.basin ? 12 : 16 });
     lg.appendChild(el("span", {}, "Deepest water:"));
     a.classes.forEach(function (c) {
       var s = el("span"), sw = el("span", { "class": "swatch" });
@@ -305,7 +305,7 @@
     t.appendChild(hr);
     data.areas.forEach(function (a) {
       var r = el("tr");
-      r.appendChild(el("td", {}, a.name));
+      r.appendChild(el("td", {}, a.name + (a.basin ? " (all rivers)" : "")));
       if (!a.ok) {
         var c = el("td", { colspan: 4 }, "No map this time" + (a.error ? ": " + a.error : ""));
         r.appendChild(c); t.appendChild(r); return;

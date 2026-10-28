@@ -16,7 +16,8 @@ cycle, done once (with Earth Engine, when the model settings use it).
 4. **Warm-up** — ``warm_up_days`` of past rain (station archive, filled from the
    main forecast model's own past) from dry, which saves the first state.
 5. **Flood-area DEMs** — each area's map is drawn once from the warm-up, which
-   downloads and keeps its DEM in ``static/areas/<area>/``.
+   downloads and keeps its DEM in ``static/areas/<area>/``; the basin map's
+   boxes likewise in ``static/basin_map/`` (basinmap.py).
 """
 
 import contextlib
@@ -159,6 +160,25 @@ def area_dems(site, run_dir, log=print):
         log(f"  Flood area {area.name}: ready{(' — ' + grid_line.split('|')[-1].strip()) if grid_line else ''}")
 
 
+def map_dems(site, run_dir, log=print):
+    """Every flood map's DEM: the areas', and the basin map's boxes."""
+    if site.flood_areas:
+        area_dems(site, run_dir, log)
+    if site.basin_map:
+        from . import basinmap
+        basinmap.prepare(site, run_dir, model_config(site, run_dir), log)
+
+
+def latest_flood_run(site):
+    """The newest run folder with recorded flows (a cycle's main version, or the warm-up)."""
+    import glob
+    found = glob.glob(site.dir("cycles", "*", "*", "inundation", "network.npz"))
+    if not found:
+        raise SetupError("no run has recorded the river flows yet: run "
+                         "'roshi-forecast setup' (with the warm-up) first")
+    return os.path.dirname(os.path.dirname(max(found, key=os.path.getmtime)))
+
+
 def setup_site(site, now=None, log=print, force_terrain=False, warm=True, parallel=True):
     """Prepare *site* once (see the module docstring) → summary dict."""
     from MRRpy.pipeline import run_pipeline
@@ -180,9 +200,8 @@ def setup_site(site, now=None, log=print, force_terrain=False, warm=True, parall
     out = {"static": site.dir("static")}
     if warm:
         t, path, run_dir = warm_up(site, now=now, log=log, parallel=parallel,
-                                   record_flood=bool(site.flood_areas))
+                                   record_flood=site.has_maps())
         out.update(first_state=path)
-        if site.flood_areas:
-            area_dems(site, run_dir, log)
+        map_dems(site, run_dir, log)
     log("Setup done. Next: roshi-forecast run -f " + os.path.relpath(site.path))
     return out

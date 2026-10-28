@@ -275,3 +275,45 @@ def test_flood_area_maps_on_the_web_page(site, tiny_basin):
     (s, w), (n, e) = a["bounds"]
     assert s < n and w < e
     assert sum(c["area_km2"] for c in a["classes"]) == pytest.approx(a["flooded_km2"], abs=1e-6)
+
+
+def test_whole_basin_map_from_boxes(site, tiny_basin):
+    from roshi_forecast import basinmap
+    from roshi_forecast.prepare import latest_flood_run, map_dems
+    from roshi_forecast.sitefile import BasinMap
+    site.basin_map = BasinMap(method="2d", boxes=[2, 1], overlap_km=0.3, dem="model_grid",
+                              threads=1)
+    FAKE["mm_per_h"] = 40.0
+    st = _run(site, T0)                                       # boxes not set up yet:
+    assert not st["areas"]["Whole basin"]["ok"]               # said so, the cycle goes on
+    assert "setup" in st["areas"]["Whole basin"]["error"]
+    map_dems(site, latest_flood_run(site), log=lambda *_: None)   # setup --maps-only
+    plan = json.load(open(basinmap.plan_path(site)))
+    assert len(plan["boxes"]) == 2 and all(b["box"][0] <= b["core"][0] for b in plan["boxes"])
+    st = _run(site, T0 + timedelta(minutes=30))
+    assert st["areas"]["Whole basin"]["ok"], st["areas"]
+    latest = json.load(open(site.dir("site", "data", "latest.json")))
+    a = latest["areas"][0]                                    # the basin map comes first
+    assert a["basin"] and a["box"] is None and a["png"] == "maps/whole_basin/depth.png"
+    joined = json.load(open(os.path.join(st["areas"]["Whole basin"]["dir"],
+                                         "inundation_summary.json")))
+    assert [b["name"] for b in joined["boxes"]] == ["box_1_1", "box_2_1"]
+    assert joined["flooded_km2"] > 0 and joined["max_depth_m"] == pytest.approx(
+        max(b["max_depth_m"] for b in joined["boxes"]), abs=0.005)   # (shallow: under the page's 10 cm)
+    assert os.path.isfile(site.dir("site", "maps", "whole_basin", "flood_depth_max.tif"))
+
+
+def test_basin_boxes_leave_out_land_outside_the_basin(tmp_path):
+    import geopandas as gpd
+    from shapely.geometry import Polygon
+    from roshi_forecast.basinmap import plan_boxes
+    ell = Polygon([(85.0, 27.0), (85.2, 27.0), (85.2, 27.1), (85.1, 27.1), (85.1, 27.2),
+                   (85.0, 27.2)])                             # an L: the north-east quarter is out
+    path = tmp_path / "ws.geojson"
+    gpd.GeoDataFrame(geometry=[ell.buffer(-1e-4)], crs=4326).to_file(path, driver="GeoJSON")
+    boxes, grid = plan_boxes(str(path), boxes=[2, 2], overlap_km=1.0)
+    assert grid == (2, 2) and sorted(b["name"] for b in boxes) == ["box_1_1", "box_1_2", "box_2_1"]
+    b = next(b for b in boxes if b["name"] == "box_1_1")
+    assert b["box"][2] - b["core"][2] == pytest.approx(1.0 / (111.32 * np.cos(np.radians(27.1))), rel=1e-3)
+    auto, (nx, ny) = plan_boxes(str(path), boxes="auto", box_cells=100_000)
+    assert nx * ny >= 20000 * 22000 / 30 ** 2 / 100_000 and len(auto) < nx * ny

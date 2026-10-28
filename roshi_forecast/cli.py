@@ -79,8 +79,12 @@ def _cmd_check(args):
 
 
 def _cmd_setup(args):
-    from .prepare import SetupError, setup_site
+    from .prepare import SetupError, latest_flood_run, map_dems, setup_site
     try:
+        if args.maps_only:
+            site = _site(args)
+            map_dems(site, latest_flood_run(site))
+            return 0
         setup_site(_site(args), force_terrain=args.terrain, warm=not args.no_warm_up,
                    parallel=not args.serial)
     except SetupError as exc:
@@ -271,6 +275,9 @@ def build_parser():
                   _cmd_setup)
     q.add_argument("--terrain", action="store_true", help="prepare the terrain again")
     q.add_argument("--no-warm-up", action="store_true", help="skip the warm-up run")
+    q.add_argument("--maps-only", action="store_true",
+                   help="only prepare the flood maps' DEMs (after adding an area or "
+                        "basin_map), from the newest run")
     q.add_argument("--serial", action="store_true", help="run models in this process")
     for name, help, func in (("run", "update the forecast now (one place, or every place)", _cmd_run),
                              ("serve", "update every every_minutes, until stopped",
