@@ -85,19 +85,19 @@ Updates run without Earth Engine. Everything they need from it is saved by
 
 ## Passwords
 
-Passwords and keys never go in this repository. On the server they go in
-environment variables, read from a file outside the repository (only you can
-read it):
+Passwords never go in this repository. Save a service's sign-in on the server
+with:
 
 ```bash
-mkdir -p ~/.config/roshi-forecast
-chmod 700 ~/.config/roshi-forecast
-# write the values into ~/.config/roshi-forecast/credentials.env with your editor
-chmod 600 ~/.config/roshi-forecast/credentials.env
+scripts/save-credentials.sh        # RTS (rts.wscada.net)
+scripts/save-credentials.sh gss    # gss.alertnepal.online
 ```
 
-GitHub Actions, used as the backup, read the same values from the repository's
-*Secrets*.
+It asks for the username and the password, without showing the password. It
+saves them in `~/.config/roshi-forecast/credentials.env`, which only you can
+read. Run it again to change one service's sign-in; the others are kept.
+GitHub Actions, used as the backup, read the same values from the
+repository's *Secrets*.
 
 ## The September 2024 rehearsal
 
