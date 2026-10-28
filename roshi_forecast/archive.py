@@ -82,6 +82,18 @@ def read_station_table(csv_path):
     return df
 
 
+def last_reports(site):
+    """{forecast-file entry name: its newest archived rain reading (naive UTC)}."""
+    out = {}
+    for meta_path in glob.glob(site.dir("archive", "stations", "*.json")):
+        with open(meta_path) as f:
+            meta = json.load(f)
+        if meta.get("entry") and meta.get("last_report_utc"):
+            t = datetime.strptime(meta["last_report_utc"], "%Y-%m-%d %H:%M")
+            out[meta["entry"]] = max(out.get(meta["entry"], t), t)
+    return out
+
+
 def stations(site):
     """{key: (meta, table)} for every archived station."""
     out = {}

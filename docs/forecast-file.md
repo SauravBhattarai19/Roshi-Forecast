@@ -52,6 +52,7 @@ Each entry has a `name`, a `source` and that source's keys.
 | Source | Keys | Reads |
 |---|---|---|
 | `alertnepal` | `station` (number), `parameter` (`PCPN_10M`) | an automatic weather station of the [alertnepal](https://alertnepal.online) dashboard (Nepal). These are the dashboard's own interfaces, not a published API: ask the alertnepal team before you run a forecast on them |
+| `rts` | `station` (number), `parameter` (`PCPN_10M`), `extra` (soil moisture), `backfill_days` (35), `sign_in` (`RTS`) | a station of the [RTS](https://rts.wscada.net) time-series system, which needs a sign-in: save it with `scripts/save-credentials.sh rts`. `python -m roshi_forecast.sources.rts` lists the stations it can read. The first reading goes back `backfill_days`, so the warm-up runs on measured rain; later ones ask only for what is new. Readings flagged by RTS's quality check are left out |
 | `csv` | `path` (file or web address), `lat`, `lon`; `time_column` (`time_utc`), `value_column` (`rain_mm`), `timezone`, `step_minutes` | one gauge: the mm that fell in the interval ending at each time |
 | `gauge_files` | `gauges`, `timeseries`, `start_utc`; `crs` | many gauges in MRRpy's own [rain-gauge files](https://mrrpy.readthedocs.io/en/latest/manual/precipitation/), e.g. satellite rain prepared for a rehearsal |
 

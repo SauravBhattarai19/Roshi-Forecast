@@ -49,9 +49,10 @@ model: model.yaml
 display_timezone: Asia/Kathmandu
 forecast_hours: 72
 warm_up_days: 30
-station_silent_minutes: 120          # AWS 496 uploads about once an hour
+station_silent_minutes: 60
 rain_stations:
-  - {name: AWS at Roshi, source: alertnepal, station: 496}
+  - {name: AWS at Roshi, source: rts, station: 468}
+  - {name: AWS at Nala, source: rts, station: 469}
 rain_forecasts:
   - {name: ECMWF, source: open_meteo, model: ecmwf_ifs025}
   - {name: GFS, source: open_meteo, model: gfs_seamless}
@@ -70,13 +71,23 @@ website:
 ```
 
 The forecast looks 72 hours ahead, since storms here often show in the
-weather models two or three days out. The station uploads its 10-minute
-readings about once an hour, so it counts as missing only after two hours of
-silence.
+weather models two or three days out.
 
-There is one rain station, AWS 496 "AWS at Roshi" (Utrecht University and S4W),
-so the measured rain is the same over the whole basin. The forecasts add the
-pattern. There are no warning levels yet. GA runoff with these soil maps ran
+The rain comes from two automatic weather stations through RTS, with the
+alertnepal team's permission. RTS has each 10-minute reading about 10 minutes
+after it ends, so a station counts as missing after an hour of silence.
+
+| Station | RTS | Owner |
+|---|---|---|
+| AWS at Roshi | 468 (alertnepal 496) | Utrecht University and S4W |
+| AWS at Nala, Kavre | 469 | |
+
+A third station, AWS at Parkhalchour (RTS 470), is left out. Its rain gauge has
+read zero since about 13 September 2026, while the other two had 50–75 mm a
+day on 24–25 September. The forecasts add the rain's pattern between the
+stations.
+
+There are no warning levels yet. GA runoff with these soil maps ran
 high at Khokana, so the levels should come from the model's own flows, not from
 gauge records. The [September 2024 rehearsal](../README.md#the-september-2024-rehearsal)
 gives the model's flows for that flood.

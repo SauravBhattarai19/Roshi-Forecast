@@ -80,6 +80,7 @@ class Context:
     end: Optional[datetime] = None
     log: object = print
     replay: bool = False                # a rehearsal on a fake clock
+    archived: dict = field(default_factory=dict)   # station entry → newest archived reading
 
 
 @dataclass
@@ -118,7 +119,7 @@ def basin_centre(cfg):
 
 def all_sources():
     """Load the built-in readers (importing registers them)."""
-    from . import alertnepal, files, open_meteo  # noqa: F401
+    from . import alertnepal, files, open_meteo, rts  # noqa: F401
     return {"station": STATION_SOURCES, "forecast": FORECAST_SOURCES,
             "inflow": INFLOW_SOURCES}
 

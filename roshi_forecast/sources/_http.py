@@ -16,7 +16,12 @@ RETRIES = 3
 
 
 class FeedError(RuntimeError):
-    """A feed that could not be read; the message says why in plain words."""
+    """A feed that could not be read; the message says why in plain words.
+    ``code`` is the HTTP status when the server refused (else None)."""
+
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
 
 
 class Session:
@@ -31,20 +36,20 @@ class Session:
         hdr = {"User-Agent": USER_AGENT}
         hdr.update(headers or {})
         body = data.encode("utf-8") if isinstance(data, str) else data
-        last = None
+        last, code = None, None
         for attempt in range(self.retries):
             try:
                 req = urllib.request.Request(url, data=body, headers=hdr)
                 with self._opener.open(req, timeout=self.timeout) as r:
                     return r.read().decode("utf-8", errors="replace")
             except urllib.error.HTTPError as exc:
-                last = f"HTTP {exc.code} {exc.reason}"
+                last, code = f"HTTP {exc.code} {exc.reason}", exc.code
                 if exc.code < 500 and exc.code != 429:
                     break                              # a refusal: retrying won't help
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
-                last = str(getattr(exc, "reason", exc))
+                last, code = str(getattr(exc, "reason", exc)), None
             time.sleep(min(2 ** attempt, 8))
-        raise FeedError(f"{url.split('?')[0]} did not answer ({last})")
+        raise FeedError(f"{url.split('?')[0]} did not answer ({last})", code=code)
 
     def get(self, url, headers=None):
         return self.request(url, headers=headers)

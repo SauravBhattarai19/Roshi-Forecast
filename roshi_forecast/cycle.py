@@ -126,6 +126,7 @@ def model_config(site, run_dir=None):
 def read_stations(site, ctx, status, log):
     """Fetch every station, archive it → [(key, meta, rain table)] of the site's stations."""
     regs = all_sources()["station"]
+    ctx.archived = archive.last_reports(site)        # readers may ask only for what is new
     for entry in site.rain_stations:
         try:
             got = regs[entry.source].func(entry.spec(), ctx)

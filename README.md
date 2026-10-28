@@ -16,7 +16,7 @@ forecasts for several places and flood maps for several areas.
 
 | | |
 |---|---|
-| Rain station | AWS 496 "AWS at Roshi" (Utrecht University and S4W), through [alertnepal](https://alertnepal.online), used with the alertnepal team's permission |
+| Rain stations | AWS at Roshi (Utrecht University and S4W; alertnepal 496) and AWS at Nala, every 10 minutes through RTS, used with the [alertnepal](https://alertnepal.online) team's permission |
 | Rain forecasts | ECMWF, GFS and ICON through [Open-Meteo](https://open-meteo.com), the alertnepal hourly forecast, and a "no more rain" version |
 | River flow | Panauti, Khopasi, Mangaltar (BP Highway) and the basin outlet above the Sunkoshi |
 | Flood maps (2-D) | Panauti town; Mangaltar (BP Highway) |
@@ -123,7 +123,8 @@ likely too high.
 ## Credits
 
 The model is [MRRpy](https://github.com/SauravBhattarai19/MRRpy). Station rain
-and the hourly forecast come from [alertnepal](https://alertnepal.online), with
-permission. The station belongs to Utrecht University and S4W. Weather-model
+comes through RTS (Real Time Solutions) and the hourly forecast from
+[alertnepal](https://alertnepal.online), with permission. AWS at Roshi belongs
+to Utrecht University and S4W. Weather-model
 rain comes from [Open-Meteo](https://open-meteo.com) (CC BY 4.0), from ECMWF,
 NOAA GFS and DWD ICON. Map data: © OpenStreetMap contributors.
