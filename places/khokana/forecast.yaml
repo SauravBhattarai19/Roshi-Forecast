@@ -1,0 +1,41 @@
+# Forecast file of Bagmati at Khokana, written by 'roshi-forecast new'.
+# Check it with:  roshi-forecast check -f places/khokana/forecast.yaml
+# Times are UTC unless a setting says otherwise.
+
+name: Bagmati at Khokana flood forecast
+model: model.yaml
+folder: .
+display_timezone: Asia/Kathmandu
+every_minutes: 30
+forecast_hours: 72
+look_back_hours: 12
+warm_up_days: 30
+missing_rain: forecast_model   # no station reported: use the main forecast model's rain
+
+# Live rain stations. None (as written): a FORECAST-ONLY place. The rain before
+# now is the main forecast model's own, and the page says so. Add stations here
+# when the place has some, as many as there are:
+rain_stations: []
+  # - {name: My gauge, source: csv, path: https://example.org/gauge.csv, lat: …, lon: …}
+  # - {name: AWS at Roshi, source: rts, station: 468}
+
+rain_forecasts:                # each one is a version of the forecast
+  - {name: ECMWF, source: open_meteo, model: ecmwf_ifs025}
+  - {name: GFS,   source: open_meteo, model: gfs_seamless}
+  - {name: ICON,  source: open_meteo, model: icon_seamless}
+  - {name: alertnepal, source: alertnepal_forecast}   # Nepal's own hourly forecast
+main_forecast: ECMWF           # this one draws the flood maps
+no_rain_version: true          # also: what if no more rain falls?
+
+hydrograph_points:             # add towns, bridges, gauges; levels are optional
+  - {name: Khokana, lat: 27.63222, lon: 85.29333}   # the outlet, at DHM 550 (Bagmati at Khokana)
+  # - {name: Town bridge, lat: …, lon: …, warning_m3s: 150, danger_m3s: 300}
+
+flood_areas: []                # close-up flood maps; box = [west, south, east, north]
+  # - {name: Town, box: [85.50, 27.58, 85.54, 27.61], method: 2d}
+
+basin_map: {method: 2d, boxes: auto}   # a flood map of every river in the basin
+
+website:
+  title: Bagmati at Khokana flood forecast (experimental)
+  notice: Run as a research test of MRRpy. Forecast only, no live rain stations; no warning levels set yet.

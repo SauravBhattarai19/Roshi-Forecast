@@ -83,15 +83,17 @@ look_back_hours: 12
 warm_up_days: 30
 missing_rain: forecast_model   # no station reported: use the main forecast model's rain
 
-# Rain stations, as many as there are (none: the forecast models' own rain is used).
+# Live rain stations. None (as written): a FORECAST-ONLY place. The rain before
+# now is the main forecast model's own, and the page says so. Add stations here
+# when the place has some, as many as there are:
 rain_stations: []
   # - {{name: My gauge, source: csv, path: https://example.org/gauge.csv, lat: …, lon: …}}
-  # - {{name: AWS at Roshi, source: alertnepal, station: 496}}
+  # - {{name: AWS at Roshi, source: rts, station: 468}}
 
 rain_forecasts:                # each one is a version of the forecast
   - {{name: ECMWF, source: open_meteo, model: ecmwf_ifs025}}
   - {{name: GFS,   source: open_meteo, model: gfs_seamless}}
-  - {{name: ICON,  source: open_meteo, model: icon_seamless}}
+  - {{name: ICON,  source: open_meteo, model: icon_seamless}}{extra_forecasts}
 main_forecast: ECMWF           # this one draws the flood maps
 no_rain_version: true          # also: what if no more rain falls?
 
@@ -167,7 +169,10 @@ def write_place(folder, name, outlet, timezone=None, project=None, half_box_deg=
         f.write(model)
     with open(paths[1], "w", encoding="utf-8") as f:
         f.write(FORECAST.format(name=name, lat=round(lat, 5), lon=round(lon, 5), timezone=tz,
-                                rel=os.path.relpath(paths[1])))
+                                rel=os.path.relpath(paths[1]),
+                                extra_forecasts=("\n  - {name: alertnepal, source: "
+                                                 "alertnepal_forecast}   # Nepal's own "
+                                                 "hourly forecast" if nepal else "")))
     return paths
 
 

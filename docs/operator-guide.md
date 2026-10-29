@@ -81,6 +81,7 @@ Every round, `serve` reads `places.yaml` and every place's files again.
 | show a river gauge's measured level under a point | the place's `forecast.yaml`, under `river_gauges` | next round |
 | add a close-up flood map | `forecast.yaml`, under `flood_areas` | its DEM is fetched by itself; the map appears from the next round |
 | add a rain station | `forecast.yaml`, under `rain_stations` | next round |
+| run a place on forecasts only (no live stations) | `forecast.yaml`: `rain_stations: []`, which is what `new` writes. The rain before now is then the main forecast model's own, and the page says so | next round |
 | add or drop a weather model | `forecast.yaml`, under `rain_forecasts` | next round |
 | forecast further ahead | `forecast.yaml`: `forecast_hours` | next round |
 | update more or less often | `places.yaml`: `every_minutes` | after the current round |
@@ -116,6 +117,10 @@ The outlet is the point on the river that the basin drains to. The command
 writes `places/nakhu/model.yaml` and `forecast.yaml` and adds the place to
 `places.yaml`. The model uses the same physics as the Roshi Khola: 90 m
 bare-earth terrain, Green-Ampt infiltration, implicit diffusive routing.
+
+The new place is forecast-only: it has no rain stations (`rain_stations: []`),
+so the rain before now is the main forecast model's own. Add its stations there
+if it has some; the Bagmati at Khokana place runs without any.
 
 The model starts with a small box around the outlet. Setup downloads the
 terrain and widens the box by itself until the whole basin fits. The place

@@ -137,8 +137,11 @@
       t.appendChild(r);
     });
     var wrap = el("div", { "class": "tablewrap" }); wrap.appendChild(t); box.appendChild(wrap);
-    var more = el("p", { "class": "meta" });
-    more.appendChild(el("a", { "class": "open", href: page(c) }, "Open the forecast: map, rivers, flood maps, charts →"));
+    var more = el("p", { "class": "open-row" });
+    var open = el("a", { "class": "open", href: page(c) });
+    open.appendChild(el("span", { "class": "big" }, "Open the " + nameOf(c) + " forecast →"));
+    open.appendChild(el("span", { "class": "small" }, "map, rivers, flood maps, charts"));
+    more.appendChild(open);
     box.appendChild(more);
     return box;
   }
@@ -149,6 +152,31 @@
     satellite: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", 19,
                 "Imagery © Esri, Maxar, Earthstar Geographics"]
   };
+  // Basins can lie inside each other (a gauge's basin inside the whole river's):
+  // the smaller ones are drawn on top, and a click inside several asks which.
+  function inRing(x, y, ring) {
+    var inside = false;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      var xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function inGeo(g, lon, lat) {
+    var polys = [];
+    (g.features || [g]).forEach(function (f) {
+      var gm = f.geometry || f;
+      if (gm.type === "Polygon") polys.push(gm.coordinates);
+      if (gm.type === "MultiPolygon") polys = polys.concat(gm.coordinates);
+    });
+    return polys.some(function (p) {
+      return inRing(lon, lat, p[0]) && !p.slice(1).some(function (h) { return inRing(lon, lat, h); });
+    });
+  }
+  function areaOf(layer) {
+    var b = layer.getBounds();
+    return (b.getEast() - b.getWest()) * (b.getNorth() - b.getSouth());
+  }
   function drawMap(places) {
     if (typeof L === "undefined") { $("map").hidden = true; return; }
     var map = L.map("map", { zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 90,
@@ -160,17 +188,34 @@
     $("base-pick").addEventListener("change", function () { setBase(this.value); });
     var all = L.featureGroup().addTo(map);
     var ink = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+    var basins = [];
     var done = places.filter(function (c) { return c.has_forecast; }).map(function (c) {
       return getJSON(c.id + "/data/basin.geojson").then(function (g) {
         var layer = L.geoJSON(g, { style: { color: ink, weight: 2, fillOpacity: 0.12 } });
         var tag = el("span"); tag.appendChild(shape(c.worst, 12));
         tag.appendChild(document.createTextNode(" " + nameOf(c)));
         layer.bindTooltip(tag.innerHTML, { permanent: true, direction: "center", className: "place-label" });
-        layer.on("click", function () { window.location.href = page(c); });
-        layer.addTo(all);
+        layer.on("mouseover", function () { layer.setStyle({ weight: 4, fillOpacity: 0.22 }); });
+        layer.on("mouseout", function () { layer.setStyle({ weight: 2, fillOpacity: 0.12 }); });
+        layer.on("click", function (e) {
+          L.DomEvent.stop(e);
+          var here = basins.filter(function (b) { return inGeo(b.g, e.latlng.lng, e.latlng.lat); });
+          if (here.length <= 1) { window.location.href = page((here[0] || { c: c }).c); return; }
+          var box = el("div", { "class": "pick" });
+          box.appendChild(el("p", {}, "Which forecast?"));
+          here.forEach(function (b) {                       // smallest first
+            var a = el("a", { "class": "open", href: page(b.c) });
+            a.appendChild(el("span", { "class": "big" }, nameOf(b.c) + " →"));
+            box.appendChild(a);
+          });
+          L.popup({ maxWidth: 280 }).setLatLng(e.latlng).setContent(box).openOn(map);
+        });
+        basins.push({ c: c, g: g, layer: layer, area: areaOf(layer) });
       }).catch(function () {});
     });
     Promise.all(done).then(function () {
+      basins.sort(function (a, b) { return a.area - b.area; });
+      basins.slice().reverse().forEach(function (b) { b.layer.addTo(all); });   // largest at the bottom
       if (all.getLayers().length) map.fitBounds(all.getBounds(), { padding: [30, 30], maxZoom: 11 });
       else map.setView([28.2, 84.1], 6.5);
     });

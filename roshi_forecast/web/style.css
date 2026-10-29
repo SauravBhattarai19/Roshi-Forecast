@@ -283,7 +283,18 @@ td.num, th.num { text-align: right; }
 .place h3 a { color: var(--fg); text-decoration: none; }
 .place h3 a:hover { text-decoration: underline; }
 .place .meta { color: var(--fg-2); font-size: 0.84rem; margin: 0; }
-.place .open { font-weight: 700; }
+.open-row { margin: 2px 0 0; }
+/* The way into a place: a large button, not a small link */
+a.open { display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+         background: var(--accent); color: var(--on-accent); text-decoration: none;
+         border-radius: 8px; padding: 10px 16px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); }
+a.open .big { font-size: 1.08rem; font-weight: 800; }
+a.open .small { font-size: 0.82rem; opacity: 0.9; }
+a.open:hover, a.open:focus-visible { filter: brightness(1.1); text-decoration: underline; }
+.place .open-row a.open { width: 100%; }
+.pick p { margin: 0 0 6px; font-weight: 700; }
+.pick a.open { margin-top: 6px; padding: 8px 12px; }
+.pick a.open .big { font-size: 0.95rem; }
 @media (max-width: 1000px) { .front { grid-template-columns: minmax(0, 1fr); }
                              .front .p-map { position: static; }
                              .front .p-map #map { height: 340px; } }

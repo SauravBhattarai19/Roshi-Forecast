@@ -130,12 +130,14 @@ def test_a_new_place_from_its_outlet(tmp_path, monkeypatch):
     assert w < 85.29 < e and s < 27.66 < n
     assert site.display_timezone == "Asia/Kathmandu" and site.basin_map is not None
     assert [p.name for p in site.hydrograph_points] == ["Outlet"]
+    assert site.rain_stations == [] and "alertnepal" in site.versions()   # forecast only
     assert [p.id for p in load_portal("places.yaml").places] == ["nakhu"]
     # the next place reuses the first one's Earth Engine project; outside Nepal: UTC, auto
     assert main(["new", "places/thames", "--outlet", "51.5,-0.1"]) == 0
     model = yaml.safe_load(open("places/thames/model.yaml"))
     assert model["GEE_PROJECT"] == "ee-test" and model["CHANNEL_QBF_M3S"] == "auto"
     assert model["TARGET_CRS_EPSG"] == "EPSG:32630"
+    assert "alertnepal" not in load_site("places/thames/forecast.yaml").versions()
     assert [p.id for p in load_portal("places.yaml").places] == ["nakhu", "thames"]
     assert main(["new", "places/thames", "--outlet", "51.5,-0.1"]) == 1     # never overwrites
     assert main(["new", "places/x", "--outlet", "51.5"]) == 1
