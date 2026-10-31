@@ -1,0 +1,188 @@
+{
+ "cycle_utc": "2026-10-31 20:02",
+ "started_utc": "2026-10-31 20:02",
+ "steps": [
+  {
+   "step": "stations",
+   "ok": true,
+   "note": "no station reported in time: past rain estimated",
+   "utc": "2026-10-31 20:02:00"
+  },
+  {
+   "step": "forecasts",
+   "ok": true,
+   "note": "4 of 4",
+   "utc": "2026-10-31 20:02:00"
+  },
+  {
+   "step": "models",
+   "ok": true,
+   "note": "5 of 5 versions ran",
+   "utc": "2026-10-31 20:02:00"
+  },
+  {
+   "step": "products",
+   "ok": true,
+   "note": "",
+   "utc": "2026-10-31 20:03:00"
+  }
+ ],
+ "stations": {},
+ "forecasts": {
+  "ECMWF": {
+   "ok": true,
+   "issued_utc": "2026-10-31 20:02",
+   "points": 12,
+   "ends_utc": "2026-11-03 20:00",
+   "info": {
+    "api": "forecast",
+    "model": "ecmwf_ifs025",
+    "run_utc": null,
+    "attribution": "Weather data by Open-Meteo.com (CC BY 4.0)"
+   }
+  },
+  "GFS": {
+   "ok": true,
+   "issued_utc": "2026-10-31 20:02",
+   "points": 24,
+   "ends_utc": "2026-11-03 20:00",
+   "info": {
+    "api": "forecast",
+    "model": "gfs_seamless",
+    "run_utc": null,
+    "attribution": "Weather data by Open-Meteo.com (CC BY 4.0)"
+   }
+  },
+  "ICON": {
+   "ok": true,
+   "issued_utc": "2026-10-31 20:02",
+   "points": 24,
+   "ends_utc": "2026-11-03 20:00",
+   "info": {
+    "api": "forecast",
+    "model": "icon_seamless",
+    "run_utc": null,
+    "attribution": "Weather data by Open-Meteo.com (CC BY 4.0)"
+   }
+  },
+  "alertnepal": {
+   "ok": true,
+   "issued_utc": "2026-10-31 20:02",
+   "points": 1,
+   "ends_utc": "2026-11-10 19:15",
+   "info": {
+    "times": "Nepal time marked Z (converted to UTC)",
+    "attribution": "Station data and forecast: alertnepal.online"
+   }
+  }
+ },
+ "versions": {
+  "ECMWF": {
+   "ok": true,
+   "seconds": 34.8,
+   "error": null,
+   "log": "/home/richapokhrel/roshi-forecast/places/roshi/cycles/20261031T2002Z/ecmwf/run.log"
+  },
+  "GFS": {
+   "ok": true,
+   "seconds": 40.5,
+   "error": null,
+   "log": "/home/richapokhrel/roshi-forecast/places/roshi/cycles/20261031T2002Z/gfs/run.log"
+  },
+  "ICON": {
+   "ok": true,
+   "seconds": 34.6,
+   "error": null,
+   "log": "/home/richapokhrel/roshi-forecast/places/roshi/cycles/20261031T2002Z/icon/run.log"
+  },
+  "alertnepal": {
+   "ok": true,
+   "seconds": 36.9,
+   "error": null,
+   "log": "/home/richapokhrel/roshi-forecast/places/roshi/cycles/20261031T2002Z/alertnepal/run.log"
+  },
+  "No more rain": {
+   "ok": true,
+   "seconds": 33.4,
+   "error": null,
+   "log": "/home/richapokhrel/roshi-forecast/places/roshi/cycles/20261031T2002Z/no_more_rain/run.log"
+  }
+ },
+ "areas": {
+  "Panauti town": {
+   "ok": true,
+   "dir": "/home/richapokhrel/roshi-forecast/places/roshi/cycles/20261031T2002Z/ecmwf/areas/panauti_town",
+   "seconds": 1.4,
+   "files": [
+    "flood_depth_max",
+    "flood_duration_hours",
+    "flood_extent_geojson",
+    "flood_extent_max",
+    "flood_first_wet_hours",
+    "flood_model",
+    "flood_time_of_max_hours",
+    "flood_velocity_max",
+    "inflows_csv",
+    "inundation_dir",
+    "summary_json"
+   ]
+  },
+  "Mangaltar (BP Highway)": {
+   "ok": true,
+   "dir": "/home/richapokhrel/roshi-forecast/places/roshi/cycles/20261031T2002Z/ecmwf/areas/mangaltar_bp_highway",
+   "seconds": 1.7,
+   "files": [
+    "flood_depth_max",
+    "flood_duration_hours",
+    "flood_extent_geojson",
+    "flood_extent_max",
+    "flood_first_wet_hours",
+    "flood_model",
+    "flood_time_of_max_hours",
+    "flood_velocity_max",
+    "inflows_csv",
+    "inundation_dir",
+    "summary_json"
+   ]
+  },
+  "Whole basin": {
+   "ok": true,
+   "dir": "/home/richapokhrel/roshi-forecast/places/roshi/cycles/20261031T2002Z/ecmwf/areas/whole_basin",
+   "basin": true,
+   "seconds": 19.2,
+   "boxes": 7
+  }
+ },
+ "ok": true,
+ "t_obs_utc": "2026-10-31 20:00",
+ "stations_reporting": [],
+ "gauges": {
+  "Roshi Khola at Panauti": {
+   "ok": true,
+   "lat": 27.5699819,
+   "lon": 85.538942133,
+   "gauge": "Roshi Khola at Panauti",
+   "station": 471,
+   "last_report_utc": "2026-10-31 19:45"
+  }
+ },
+ "run_start_utc": "2026-10-31 08:00",
+ "run_end_utc": "2026-11-03 20:00",
+ "restart_from": "state_20261031T0800Z.npz",
+ "states_kept": [
+  "2026-10-31 09:00",
+  "2026-10-31 10:00",
+  "2026-10-31 11:00",
+  "2026-10-31 12:00",
+  "2026-10-31 13:00",
+  "2026-10-31 14:00",
+  "2026-10-31 15:00",
+  "2026-10-31 16:00",
+  "2026-10-31 17:00",
+  "2026-10-31 18:00",
+  "2026-10-31 19:00",
+  "2026-10-31 20:00"
+ ],
+ "seconds": 71.6,
+ "finished_utc": "2026-10-31 20:03"
+}
