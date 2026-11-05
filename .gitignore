@@ -17,6 +17,9 @@ old/
 public/
 .publish/
 
+# Working papers, figures and drafts: not part of the code
+proposal/
+
 # Secrets: never commit them (see "Passwords" in README.md)
 credentials*.env
 *.env

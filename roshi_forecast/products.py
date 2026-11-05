@@ -7,8 +7,10 @@ products.py — what the web page shows, as plain files under ``site/data`` and
                                 their highest expected flow and level, areas
     data/points/<point>.json    flow at the point for every version (UTC times),
                                 and the measured water level if a river gauge is there
-    data/points/<point>.csv     the same as a table, for download
-    data/rain.json, rain.csv    basin-average rain per hour for every version
+    data/points/<point>.csv     the model's flows as a table, for download
+    data/rain.json              basin-average rain per hour for every version
+    data/rain.csv               the same for download: forecast hours only when
+                                the past rain is measured at stations
     data/basin.geojson          the modelled basin outline
     maps/<area>/depth.png       deepest water, on the web map's projection
     maps/<area>/depth.json      its corners and the depth classes
@@ -16,6 +18,11 @@ products.py — what the web page shows, as plain files under ``site/data`` and
     maps/<area>/flood_depth_max.tif   the depth map itself, for GIS
 
 Levels are given in words and in the tables, never by colour alone.
+
+Measured data (station rain, river gauge levels) is ours to show but not to
+hand out: the S4W / RTS stations are read with permission to run the model and
+draw the results, not to pass the readings on.  So the page draws them, but no
+download (CSV) carries them — the downloads hold model results and forecasts.
 """
 
 import json
@@ -171,10 +178,7 @@ def build(site, status, versions, main, run_start, t_obs, now, levels=None):
         csv = table.copy()
         csv.insert(0, "part", np.where(csv.index <= t_obs, "with station rain" if by_stations
                                        else "with past rain", "forecast"))
-        if g is not None and len(lvl):
-            near = lvl[~lvl.index.duplicated()].sort_index()
-            csv["measured_level_m"] = near.reindex(csv.index, method="nearest",
-                                                   tolerance=pd.Timedelta("5min")).to_numpy()
+        # No measured level here: the gauge readings are drawn, never handed out.
         csv.index.name = "time_utc"
         csv.round(3).to_csv(os.path.join(data_dir, "points", f"{pid}.csv"))
 
@@ -192,6 +196,8 @@ def build(site, status, versions, main, run_start, t_obs, now, levels=None):
                                    else "past rain (" + (main if past_rain(site) ==
                                                          "forecast_model" else "none") + ")",
                                    "forecast"))
+    if by_stations:                     # station rain is drawn, never handed out
+        out = out[out.index > t_obs]
     out.index.name = "hour_ending_utc"
     out.to_csv(os.path.join(data_dir, "rain.csv"))
     past = rain[(rain.index > t_obs - timedelta(hours=site.look_back_hours))

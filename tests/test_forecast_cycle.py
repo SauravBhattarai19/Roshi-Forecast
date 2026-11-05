@@ -216,8 +216,13 @@ def test_a_river_gauge_is_drawn_under_its_point(site):
     m = pt["measured"]
     assert m["name"] == "Bridge gauge" and len(m["times"]) == len(m["values"]) > 60
     assert m["times"][0] >= pt["times"][0][:14] and m["times"][-1] == "2026-03-01T12:05Z"
+    # Measured data is drawn but never offered for download (S4W / RTS terms)
     csv = pd.read_csv(os.path.join(data, "points", "outlet_bridge.csv"))
-    assert csv["measured_level_m"].notna().sum() > 60
+    assert "measured_level_m" not in csv and set(csv["part"]) == {"with station rain",
+                                                                  "forecast"}
+    rain = pd.read_csv(os.path.join(data, "rain.csv"))
+    assert set(rain["part"]) == {"forecast"}                       # no station rain in it
+    assert latest["rain"]["past_mm"] is not None                   # …but the page still has it
     kept = pd.read_csv(site.dir("archive", "levels", "bridge_gauge.csv.gz"))
     assert len(kept) == int((t <= T0).sum())                      # the whole history is kept
 

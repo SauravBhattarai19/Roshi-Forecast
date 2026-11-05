@@ -1034,7 +1034,9 @@
     var p = $("downloads"); p.innerHTML = "";
     p.appendChild(document.createTextNode("Download: "));
     var links = S.data.points.map(function (x) { return ["data/points/" + x.id + ".csv", x.name + " flows (CSV)"]; });
-    links.push(["data/rain.csv", "rain (CSV)"]);
+    // Measured data (station rain, river levels) is drawn but never offered for
+    // download: with stations, rain.csv holds the forecast hours only.
+    links.push(["data/rain.csv", S.data.past_rain === "stations" ? "rain forecast (CSV)" : "rain (CSV)"]);
     S.data.areas.forEach(function (a) { if (a.ok) links.push([a.tif, a.name + " depth (GeoTIFF)"]); });
     links.forEach(function (l, i) {
       if (i) p.appendChild(document.createTextNode(" · "));
